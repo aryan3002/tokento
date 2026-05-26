@@ -895,6 +895,8 @@ function SettingsTab({
 
 /* ---- Demo Wiring ---- */
 function DemoTab({ merchant }: { merchant: Merchant | null }) {
+  const docsUrl = `${API_BASE}/docs`;
+  const openApiSpecUrl = `${API_BASE}/docs/openapi.yaml`;
   const claudeConfig = useMemo(() => JSON.stringify({
     mcpServers: {
       tokento: {
@@ -923,6 +925,24 @@ function DemoTab({ merchant }: { merchant: Merchant | null }) {
           API: <code className="bg-surface-3 px-1 rounded">http://localhost:4000/health</code> · MCP Worker:{" "}
           <code className="bg-surface-3 px-1 rounded">http://localhost:8787</code> · Postgres :5433 · Redis :6379
         </p>
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <a
+            href={docsUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium transition-colors"
+          >
+            Open API Docs
+          </a>
+          <a
+            href={openApiSpecUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="px-3 py-1.5 rounded-lg bg-surface-3 hover:bg-surface-4 text-xs font-medium transition-colors"
+          >
+            OpenAPI YAML
+          </a>
+        </div>
         <p className="text-xs text-text-muted">
           See the System Status tab for one-click health checks.
         </p>

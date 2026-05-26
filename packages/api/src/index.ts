@@ -2,6 +2,8 @@
 // Tokento — API Server Entry Point
 // ============================================================
 import 'dotenv/config';
+import fs from 'fs';
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -34,6 +36,8 @@ Sentry.init({
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const OPENAPI_PATH = path.resolve(__dirname, '../openapi.yaml');
+const REDOC_PATH = path.resolve(__dirname, '../docs.html');
 
 // ---- Global Middleware ----
 app.use(helmet());
@@ -46,6 +50,34 @@ app.use(sandboxIsolation());
 // ---- Health Check ----
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 'tokento-api', timestamp: new Date().toISOString() });
+});
+
+app.get('/docs/openapi.yaml', (_req, res) => {
+  if (!fs.existsSync(OPENAPI_PATH)) {
+    res.status(404).json({
+      error: {
+        code: 'openapi_not_found',
+        message: 'openapi.yaml not found. Run `pnpm --filter @tokento/api docs:build`.',
+      },
+      requestId: 'docs-openapi',
+    });
+    return;
+  }
+  res.sendFile(OPENAPI_PATH);
+});
+
+app.get('/docs', (_req, res) => {
+  if (!fs.existsSync(REDOC_PATH)) {
+    res.status(404).json({
+      error: {
+        code: 'docs_not_found',
+        message: 'docs.html not found. Run `pnpm --filter @tokento/api docs:build`.',
+      },
+      requestId: 'docs-html',
+    });
+    return;
+  }
+  res.sendFile(REDOC_PATH);
 });
 
 // ---- API Routes ----
