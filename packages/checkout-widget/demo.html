@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tokento Checkout Widget Demo</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 24px; color: #0f172a; background: #f8fafc; }
+      .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 16px; max-width: 840px; }
+      h1 { margin: 0 0 12px; font-size: 22px; }
+      label { display: block; margin: 10px 0 6px; font-size: 13px; color: #334155; }
+      input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; }
+      button { margin-top: 12px; padding: 10px 14px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; font-weight: 600; cursor: pointer; }
+      pre { background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; }
+      #mount { min-height: 120px; border: 2px dashed #cbd5e1; border-radius: 12px; padding: 20px; background: #f8fafc; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Tokento Widget OAuth Demo</h1>
+      <p>This demo runs the widget end-to-end against your local API using the popup OAuth grant flow.</p>
+      <label for="apiBaseUrl">API base URL</label>
+      <input id="apiBaseUrl" value="http://localhost:4000" />
+      <label for="merchantId">Merchant ID</label>
+      <input id="merchantId" value="11111111-1111-4111-8111-111111111111" />
+      <label for="customerId">Customer ID</label>
+      <input id="customerId" value="11111111-1111-1111-1111-111111111111" />
+      <button id="launchBtn">Mount Widget</button>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;font-size:18px;">Widget Mount</h2>
+      <div id="mount"></div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0;font-size:18px;">Last OAuth Result</h2>
+      <pre id="result">No OAuth result yet.</pre>
+    </div>
+
+    <script src="./dist/tokento-widget.js"></script>
+    <script>
+      const resultEl = document.getElementById('result');
+      const launchBtn = document.getElementById('launchBtn');
+
+      function renderResult(payload) {
+        resultEl.textContent = JSON.stringify(payload, null, 2);
+      }
+
+      launchBtn.addEventListener('click', () => {
+        const apiBaseUrl = document.getElementById('apiBaseUrl').value.trim();
+        const merchantId = document.getElementById('merchantId').value.trim();
+        const customerId = document.getElementById('customerId').value.trim();
+
+        window.Tokento.destroy();
+        window.Tokento.init({
+          apiBaseUrl,
+          merchantId,
+          customerId,
+          position: 'inline',
+          containerId: 'mount',
+          onConnected: async (oauthResult) => {
+            const payload = {
+              oauthResult,
+              walletQuery: null,
+            };
+
+            try {
+              const walletRes = await fetch(`${apiBaseUrl}/api/v1/wallet/${customerId}/tokens`, {
+                headers: {
+                  Authorization: `Bearer ${oauthResult.walletToken}`,
+                },
+              });
+              const walletBody = await walletRes.json();
+              payload.walletQuery = {
+                status: walletRes.status,
+                body: walletBody,
+              };
+            } catch (err) {
+              payload.walletQuery = {
+                status: 'error',
+                body: String(err),
+              };
+            }
+
+            renderResult(payload);
+          },
+        });
+      });
+
+      window.addEventListener('tokento:connected', (event) => {
+        renderResult({ source: 'tokento:connected', detail: event.detail });
+      });
+    </script>
+  </body>
+</html>

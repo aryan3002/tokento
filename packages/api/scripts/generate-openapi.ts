@@ -183,6 +183,18 @@ const DevB2BSessionSchema = z.object({
   warning: z.string(),
 });
 
+const WidgetStateRequestSchema = z.object({
+  merchantId: z.string().min(1),
+  customerId: z.string().min(1),
+  origin: z.string().url(),
+});
+
+const WidgetStateResponseSchema = z.object({
+  state: z.string(),
+  authorizeUrl: z.string().url(),
+  expiresInSeconds: z.number().int().positive(),
+});
+
 const document = createDocument({
   openapi: '3.1.0',
   info: {
@@ -601,6 +613,39 @@ const document = createDocument({
         responses: {
           '200': { description: 'Dev fallback session', content: { 'application/json': { schema: DevB2BSessionSchema } } },
           '403': { description: 'Dev fallback disabled', content: { 'application/json': { schema: ErrorResponseSchema } } },
+        },
+      },
+    },
+    '/api/v1/auth/b2c/widget/state': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Create signed widget OAuth state',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: WidgetStateRequestSchema },
+          },
+        },
+        responses: {
+          '200': { description: 'Signed OAuth state', content: { 'application/json': { schema: WidgetStateResponseSchema } } },
+          '400': { description: 'Validation error', content: { 'application/json': { schema: ErrorResponseSchema } } },
+        },
+      },
+    },
+    '/api/v1/auth/b2c/widget/authorize': {
+      get: {
+        tags: ['Auth'],
+        summary: 'Widget OAuth popup authorize page',
+        description: 'Renders the popup consent HTML that posts wallet token results back to the opener via postMessage.',
+        requestParams: {
+          query: z.object({
+            state: z.string().min(1),
+            sessionJwt: z.string().optional(),
+          }),
+        },
+        responses: {
+          '200': { description: 'Popup HTML', content: { 'text/html': { schema: z.string() } } },
+          '400': { description: 'Invalid state', content: { 'text/html': { schema: z.string() } } },
         },
       },
     },

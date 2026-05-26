@@ -16,6 +16,7 @@ import {
   authenticateB2BSessionJwt,
   authenticateB2CSessionJwt,
   createDevB2BSessionJwt,
+  createDevB2CSessionJwt,
 } from '../src/services/stytch.service';
 
 describe('stytch service dev fallback', () => {
@@ -42,5 +43,11 @@ describe('stytch service dev fallback', () => {
     expect(session.merchantId).toBe('11111111-1111-4111-8111-111111111111');
     expect(session.sessionJwt).toContain(session.merchantId);
     expect(mocks.prismaMock.merchant.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates dev B2C session for widget oauth handoff', async () => {
+    const session = await createDevB2CSessionJwt('customer-789');
+    expect(session.customerId).toBe('customer-789');
+    expect(session.sessionJwt).toBe('b2c_dev_session::customer-789');
   });
 });
