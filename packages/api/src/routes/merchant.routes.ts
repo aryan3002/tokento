@@ -3,7 +3,7 @@
 // ============================================================
 import { Router, Request, Response, NextFunction } from 'express';
 import { merchantService } from '../services/merchant.service';
-import { authenticateApiKey } from '../middleware/auth.middleware';
+import { authenticateApiKey, authenticateApiKeyOrB2BSession } from '../middleware/auth.middleware';
 import { CreateMerchantSchema, UpdateMerchantConfigSchema, CreateEarnRuleSchema, UpdateEarnRuleSchema, CreateApiKeySchema, CreateWebhookEndpointSchema } from '@tokento/shared';
 import { webhookService } from '../services/webhook.service';
 
@@ -19,7 +19,7 @@ router.post('/', async (req: Request, res: Response, next: NextFunction) => {
 });
 
 // GET /v1/merchants/me
-router.get('/me', authenticateApiKey(['merchants:read']), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/me', authenticateApiKeyOrB2BSession(['merchants:read']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const merchant = await merchantService.getById(req.merchantId!);
     res.json(merchant);
@@ -27,7 +27,7 @@ router.get('/me', authenticateApiKey(['merchants:read']), async (req: Request, r
 });
 
 // PUT /v1/merchants/me/config
-router.put('/me/config', authenticateApiKey(['merchants:write']), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/me/config', authenticateApiKeyOrB2BSession(['merchants:write']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = UpdateMerchantConfigSchema.parse(req.body);
     const merchant = await merchantService.updateConfig(req.merchantId!, data);
@@ -36,7 +36,7 @@ router.put('/me/config', authenticateApiKey(['merchants:write']), async (req: Re
 });
 
 // ---- Earn Rules ----
-router.post('/me/earn-rules', authenticateApiKey(['earn_rules:write']), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/me/earn-rules', authenticateApiKeyOrB2BSession(['earn_rules:write']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = CreateEarnRuleSchema.parse(req.body);
     const rule = await merchantService.createEarnRule(req.merchantId!, data);
@@ -44,14 +44,14 @@ router.post('/me/earn-rules', authenticateApiKey(['earn_rules:write']), async (r
   } catch (err) { next(err); }
 });
 
-router.get('/me/earn-rules', authenticateApiKey(['earn_rules:read']), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/me/earn-rules', authenticateApiKeyOrB2BSession(['earn_rules:read']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const rules = await merchantService.getEarnRules(req.merchantId!);
     res.json(rules);
   } catch (err) { next(err); }
 });
 
-router.put('/me/earn-rules/:ruleId', authenticateApiKey(['earn_rules:write']), async (req: Request, res: Response, next: NextFunction) => {
+router.put('/me/earn-rules/:ruleId', authenticateApiKeyOrB2BSession(['earn_rules:write']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = UpdateEarnRuleSchema.parse(req.body);
     const ruleId = Array.isArray(req.params.ruleId) ? req.params.ruleId[0] : req.params.ruleId;
@@ -61,14 +61,14 @@ router.put('/me/earn-rules/:ruleId', authenticateApiKey(['earn_rules:write']), a
 });
 
 // ---- Tokens & Redemptions ----
-router.get('/me/tokens', authenticateApiKey(['tokens:read']), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/me/tokens', authenticateApiKeyOrB2BSession(['tokens:read']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const tokens = await merchantService.getTokens(req.merchantId!);
     res.json(tokens);
   } catch (err) { next(err); }
 });
 
-router.get('/me/redemptions', authenticateApiKey(['tokens:read']), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/me/redemptions', authenticateApiKeyOrB2BSession(['tokens:read']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const redemptions = await merchantService.getRedemptions(req.merchantId!);
     res.json(redemptions);
@@ -76,7 +76,7 @@ router.get('/me/redemptions', authenticateApiKey(['tokens:read']), async (req: R
 });
 
 // ---- API Keys ----
-router.post('/me/api-keys', authenticateApiKey(['merchants:write']), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/me/api-keys', authenticateApiKeyOrB2BSession(['merchants:write']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = CreateApiKeySchema.parse(req.body);
     const result = await merchantService.createApiKey(req.merchantId!, data);
@@ -84,14 +84,14 @@ router.post('/me/api-keys', authenticateApiKey(['merchants:write']), async (req:
   } catch (err) { next(err); }
 });
 
-router.get('/me/api-keys', authenticateApiKey(['merchants:read']), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/me/api-keys', authenticateApiKeyOrB2BSession(['merchants:read']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const keys = await merchantService.listApiKeys(req.merchantId!);
     res.json(keys);
   } catch (err) { next(err); }
 });
 
-router.delete('/me/api-keys/:keyId', authenticateApiKey(['merchants:write']), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/me/api-keys/:keyId', authenticateApiKeyOrB2BSession(['merchants:write']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const keyId = Array.isArray(req.params.keyId) ? req.params.keyId[0] : req.params.keyId;
     await merchantService.revokeApiKey(req.merchantId!, keyId);
@@ -100,7 +100,7 @@ router.delete('/me/api-keys/:keyId', authenticateApiKey(['merchants:write']), as
 });
 
 // ---- Webhooks ----
-router.post('/me/webhooks', authenticateApiKey(['webhooks:write']), async (req: Request, res: Response, next: NextFunction) => {
+router.post('/me/webhooks', authenticateApiKeyOrB2BSession(['webhooks:write']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = CreateWebhookEndpointSchema.parse(req.body);
     const endpoint = await webhookService.createEndpoint(req.merchantId!, data);
@@ -108,14 +108,14 @@ router.post('/me/webhooks', authenticateApiKey(['webhooks:write']), async (req: 
   } catch (err) { next(err); }
 });
 
-router.get('/me/webhooks', authenticateApiKey(['webhooks:read']), async (req: Request, res: Response, next: NextFunction) => {
+router.get('/me/webhooks', authenticateApiKeyOrB2BSession(['webhooks:read']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const endpoints = await webhookService.listEndpoints(req.merchantId!);
     res.json(endpoints);
   } catch (err) { next(err); }
 });
 
-router.delete('/me/webhooks/:endpointId', authenticateApiKey(['webhooks:write']), async (req: Request, res: Response, next: NextFunction) => {
+router.delete('/me/webhooks/:endpointId', authenticateApiKeyOrB2BSession(['webhooks:write']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const endpointId = Array.isArray(req.params.endpointId) ? req.params.endpointId[0] : req.params.endpointId;
     await webhookService.deleteEndpoint(req.merchantId!, endpointId);

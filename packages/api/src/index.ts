@@ -20,6 +20,7 @@ import validationRoutes from './routes/validation.routes';
 import redemptionRoutes from './routes/redemption.routes';
 import merchantRoutes from './routes/merchant.routes';
 import eventsRoutes from './routes/events.routes';
+import authRoutes from './routes/auth.routes';
 
 // Initialize webhook service (sets up event listeners)
 import './services/webhook.service';
@@ -55,6 +56,7 @@ app.use(`${API_PREFIX}/tokens`, redemptionRoutes);
 app.use(`${API_PREFIX}/redemptions`, redemptionRoutes);
 app.use(`${API_PREFIX}/merchants`, merchantRoutes);
 app.use(`${API_PREFIX}/events`, eventsRoutes);
+app.use(`${API_PREFIX}/auth`, authRoutes);
 
 // ---- Error Handling ----
 app.use(notFoundHandler());

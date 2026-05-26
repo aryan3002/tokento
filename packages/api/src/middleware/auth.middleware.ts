@@ -9,6 +9,7 @@ import { API_KEY } from '@tokento/shared';
 import { hashApiKey } from '../utils/ids';
 import prisma from '../db/client';
 import { logger } from '../utils/logger';
+import { authenticateB2BSessionJwt, authenticateB2CSessionJwt } from '../services/stytch.service';
 
 // Extend Express Request to carry auth context
 declare global {
@@ -18,9 +19,20 @@ declare global {
       customerId?: string;
       apiKeyScopes?: string[];
       isSandbox?: boolean;
+      b2bMemberId?: string;
+      b2bOrganizationId?: string;
+      stytchUserId?: string;
       requestId?: string;
     }
   }
+}
+
+function extractBearerToken(req: Request): string | null {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  return authHeader.substring(7);
 }
 
 /**
@@ -122,38 +134,34 @@ export function authenticateApiKey(requiredScopes: string[] = []) {
 export function authenticateBearerToken() {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const authHeader = req.headers.authorization;
-
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      const sessionJwt = extractBearerToken(req);
+      if (!sessionJwt) {
         res.status(401).json({
           error: {
             code: 'missing_bearer_token',
-            message: 'OAuth 2.0 bearer token required.',
+            message: 'B2C session JWT required.',
           },
           requestId: req.requestId || 'unknown',
         });
         return;
       }
 
-      // MVP: Simple token validation
-      // TODO: Replace with Stytch OAuth session validation
-      const token = authHeader.substring(7);
-
-      // For MVP, we use a simple approach: the token IS the customer ID
-      // In production, this would validate against Stytch and extract the customer ID
-      if (!token || token.length < 8) {
+      try {
+        const auth = await authenticateB2CSessionJwt(sessionJwt);
+        req.customerId = auth.customerId;
+        req.stytchUserId = auth.userId;
+        next();
+      } catch (err) {
+        logger.warn({ err }, 'B2C bearer token authentication failed');
         res.status(401).json({
           error: {
             code: 'invalid_bearer_token',
-            message: 'Invalid bearer token.',
+            message: 'Invalid B2C session JWT.',
           },
           requestId: req.requestId || 'unknown',
         });
         return;
       }
-
-      req.customerId = token;
-      next();
     } catch (err) {
       logger.error({ err }, 'Bearer auth middleware error');
       res.status(500).json({
@@ -164,5 +172,70 @@ export function authenticateBearerToken() {
         requestId: req.requestId || 'unknown',
       });
     }
+  };
+}
+
+/**
+ * Middleware: Authenticate dashboard/merchant context via B2B session JWT.
+ */
+export function authenticateB2BSession() {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const sessionJwt = extractBearerToken(req);
+      if (!sessionJwt) {
+        res.status(401).json({
+          error: {
+            code: 'missing_b2b_session',
+            message: 'B2B session JWT required in Authorization: Bearer <jwt>.',
+          },
+          requestId: req.requestId || 'unknown',
+        });
+        return;
+      }
+
+      try {
+        const auth = await authenticateB2BSessionJwt(sessionJwt);
+        req.merchantId = auth.merchantId;
+        req.b2bMemberId = auth.memberId;
+        req.b2bOrganizationId = auth.organizationId;
+        req.isSandbox = true;
+        next();
+      } catch (err) {
+        logger.warn({ err }, 'B2B session authentication failed');
+        res.status(401).json({
+          error: {
+            code: 'invalid_b2b_session',
+            message: 'Invalid B2B session JWT.',
+          },
+          requestId: req.requestId || 'unknown',
+        });
+      }
+    } catch (err) {
+      logger.error({ err }, 'B2B auth middleware error');
+      res.status(500).json({
+        error: {
+          code: 'auth_error',
+          message: 'Authentication failed due to an internal error.',
+        },
+        requestId: req.requestId || 'unknown',
+      });
+    }
+  };
+}
+
+/**
+ * Middleware: authenticate merchant context via API key (preferred for S2S)
+ * or via B2B session JWT (dashboard flow).
+ */
+export function authenticateApiKeyOrB2BSession(requiredScopes: string[] = []) {
+  const apiKeyMiddleware = authenticateApiKey(requiredScopes);
+  const b2bMiddleware = authenticateB2BSession();
+
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const hasApiKey = Boolean(req.headers[API_KEY.HEADER_NAME.toLowerCase()]);
+    if (hasApiKey) {
+      return apiKeyMiddleware(req, res, next);
+    }
+    return b2bMiddleware(req, res, next);
   };
 }

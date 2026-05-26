@@ -135,7 +135,7 @@ async function handleToolCall(req: MCPRequest, env: Env): Promise<Response> {
 
         const url = `${apiBase}/api/v1/wallet/${customerId}/tokens?${queryParams}`;
         const resp = await fetch(url, {
-          headers: { 'Authorization': `Bearer ${customerId}` },
+          headers: { 'Authorization': `Bearer b2c_dev_session::${customerId}` },
         });
         const data = await resp.json();
 
@@ -150,7 +150,7 @@ async function handleToolCall(req: MCPRequest, env: Env): Promise<Response> {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer agent-token`,
+            'Authorization': 'Bearer b2c_dev_session::mcp-agent',
           },
           body: JSON.stringify({
             transactionAmount: args.transaction_amount,
@@ -172,7 +172,7 @@ async function handleToolCall(req: MCPRequest, env: Env): Promise<Response> {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer agent-token`,
+            'Authorization': 'Bearer b2c_dev_session::mcp-agent',
           },
           body: JSON.stringify({
             transactionAmount: args.transaction_amount,
