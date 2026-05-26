@@ -2779,6 +2779,112 @@ paths:
                   - error
                   - requestId
                 additionalProperties: false
+  /api/v1/auth/b2c/widget/state:
+    post:
+      tags:
+        - Auth
+      summary: Create signed widget OAuth state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                merchantId:
+                  type: string
+                  minLength: 1
+                customerId:
+                  type: string
+                  minLength: 1
+                origin:
+                  type: string
+                  format: uri
+              required:
+                - merchantId
+                - customerId
+                - origin
+      responses:
+        "200":
+          description: Signed OAuth state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  state:
+                    type: string
+                  authorizeUrl:
+                    type: string
+                    format: uri
+                  expiresInSeconds:
+                    type: integer
+                    exclusiveMinimum: 0
+                    maximum: 9007199254740991
+                required:
+                  - state
+                  - authorizeUrl
+                  - expiresInSeconds
+                additionalProperties: false
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties: {}
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                  requestId:
+                    type: string
+                required:
+                  - error
+                  - requestId
+                additionalProperties: false
+  /api/v1/auth/b2c/widget/authorize:
+    get:
+      tags:
+        - Auth
+      summary: Widget OAuth popup authorize page
+      description: Renders the popup consent HTML that posts wallet token results back to the opener via postMessage.
+      parameters:
+        - in: query
+          name: state
+          schema:
+            type: string
+            minLength: 1
+          required: true
+        - in: query
+          name: sessionJwt
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Popup HTML
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Invalid state
+          content:
+            text/html:
+              schema:
+                type: string
   /api/v1/events/stream:
     get:
       tags:

@@ -143,3 +143,22 @@ export async function createDevB2BSessionJwt(merchantId?: string): Promise<{
     merchantId: resolvedMerchantId,
   };
 }
+
+export async function createDevB2CSessionJwt(customerId: string): Promise<{
+  sessionJwt: string;
+  customerId: string;
+}> {
+  if (!usingPlaceholderStytchConfig()) {
+    throw new Error('stytch_dev_session_disabled_without_placeholder_config');
+  }
+
+  const resolvedCustomerId = customerId.trim();
+  if (!resolvedCustomerId) {
+    throw new Error('missing_customer_for_dev_session');
+  }
+
+  return {
+    sessionJwt: `b2c_dev_session::${resolvedCustomerId}`,
+    customerId: resolvedCustomerId,
+  };
+}
