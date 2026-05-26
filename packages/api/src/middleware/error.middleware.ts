@@ -4,6 +4,7 @@
 // Standardized error responses with reason codes.
 
 import { Request, Response, NextFunction } from 'express';
+import * as Sentry from '@sentry/node';
 import { ZodError } from 'zod';
 import { logger } from '../utils/logger';
 
@@ -31,6 +32,13 @@ export class AppError extends Error {
  */
 export function errorHandler() {
   return (err: Error, req: Request, res: Response, _next: NextFunction): void => {
+    Sentry.withScope((scope) => {
+      scope.setTag('request_id', req.requestId || 'unknown');
+      scope.setTag('http_method', req.method);
+      scope.setTag('http_path', req.path);
+      Sentry.captureException(err);
+    });
+
     // Zod validation errors
     if (err instanceof ZodError) {
       res.status(400).json({

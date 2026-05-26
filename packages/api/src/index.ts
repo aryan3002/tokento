@@ -5,6 +5,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import * as Sentry from '@sentry/node';
 import { API_PREFIX } from '@tokento/shared';
 import { logger } from './utils/logger';
 import { requestId } from './middleware/request-id.middleware';
@@ -22,6 +23,13 @@ import eventsRoutes from './routes/events.routes';
 
 // Initialize webhook service (sets up event listeners)
 import './services/webhook.service';
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || undefined,
+  environment: process.env.NODE_ENV || 'development',
+  enabled: Boolean(process.env.SENTRY_DSN),
+  tracesSampleRate: 0,
+});
 
 const app = express();
 const PORT = process.env.PORT || 4000;

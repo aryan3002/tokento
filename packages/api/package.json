@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.3.0",
+    "@sentry/node": "^10.53.1",
     "@tokento/shared": "workspace:*",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
@@ -38,8 +39,10 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
+    "@types/supertest": "^7.2.0",
     "@types/uuid": "^10.0.0",
     "prisma": "^6.3.0",
+    "supertest": "^7.2.2",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
