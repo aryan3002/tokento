@@ -1,0 +1,14 @@
+{
+  "name": "@tokento/checkout-widget",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./dist/tokento-widget.js",
+  "scripts": {
+    "build": "tsc && node scripts/bundle.js",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

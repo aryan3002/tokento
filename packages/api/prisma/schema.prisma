@@ -1,0 +1,250 @@
+// ============================================================
+// Tokento — Prisma Schema
+// ============================================================
+// Maps directly to the database tables described in the vault's
+// Token Architecture and Implementation Plan.
+//
+// Tables:
+//   merchants, earn_rules, tokens, wallets, redemptions,
+//   audit_logs, api_keys, idempotency_records, webhook_endpoints,
+//   webhook_deliveries
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---- Merchants ----
+
+model Merchant {
+  id               String           @id @default(uuid())
+  name             String
+  email            String           @unique
+  agentOptIn       Boolean          @default(true)
+  settlementType   String           @default("discount")   // discount | cashback | credit
+  settlementTiming String           @default("real_time")   // real_time | daily_batch
+  webhookUrl       String?
+  webhookSecret    String?
+  isSandbox        Boolean          @default(true)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  earnRules         EarnRule[]
+  tokens            Token[]
+  apiKeys           ApiKey[]
+  redemptions       Redemption[]
+  webhookEndpoints  WebhookEndpoint[]
+
+  @@map("merchants")
+}
+
+// ---- Earn Rules ----
+
+model EarnRule {
+  id                      String   @id @default(uuid())
+  merchantId              String
+  name                    String
+  spendThreshold          Float    @default(0)
+  tokenDenomination       Float
+  expiryDays              Int      @default(90)
+  categoryRestriction     String?
+  channelRestriction      String?
+  stackabilityFlag        Boolean  @default(true)
+  agentPresentableFlag    Boolean  @default(true)    // Default ON per decision log
+  minimumTransactionFloor Float    @default(0)
+  isActive                Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  tokens   Token[]
+
+  @@index([merchantId])
+  @@map("earn_rules")
+}
+
+// ---- Tokens ----
+
+model Token {
+  id                      String   @id @default(uuid())
+  merchantId              String
+  customerId              String
+  earnRuleId              String
+  denomination            Float
+  tokenType               String   @default("loyalty")  // loyalty | pricing | returns
+  status                  String   @default("ACTIVE")    // ACTIVE | REDEEMED | EXPIRED
+  signature               String                          // HMAC-SHA256
+  idempotencyKey          String
+  
+  // Conditions (inherited from earn rule at mint time)
+  categoryRestriction     String?
+  channelRestriction      String?
+  stackabilityFlag        Boolean  @default(true)
+  agentPresentableFlag    Boolean  @default(true)
+  minimumTransactionFloor Float    @default(0)
+
+  // Timestamps
+  issuedAt   DateTime  @default(now())
+  expiryAt   DateTime
+  redeemedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // Environment
+  isSandbox Boolean @default(true)
+
+  merchant   Merchant    @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  earnRule   EarnRule     @relation(fields: [earnRuleId], references: [id])
+  wallet     Wallet       @relation(fields: [customerId], references: [customerId])
+  redemption Redemption?
+
+  @@unique([idempotencyKey, merchantId])
+  @@index([customerId, status])
+  @@index([merchantId, status])
+  @@index([expiryAt])
+  @@map("tokens")
+}
+
+// ---- Wallets ----
+
+model Wallet {
+  customerId String   @id
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tokens Token[]
+
+  @@map("wallets")
+}
+
+// ---- Redemptions ----
+// Append-only redemption log
+
+model Redemption {
+  id                 String   @id @default(uuid())
+  tokenId            String   @unique
+  merchantId         String
+  customerId         String
+  transactionAmount  Float
+  tokenDenomination  Float
+  netValue           Float
+  agentId            String?
+  settlementRef      String   @default(uuid())
+  redeemedAt         DateTime @default(now())
+
+  token    Token    @relation(fields: [tokenId], references: [id])
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@index([merchantId])
+  @@index([customerId])
+  @@index([redeemedAt])
+  @@map("redemptions")
+}
+
+// ---- API Keys ----
+
+model ApiKey {
+  id         String    @id @default(uuid())
+  merchantId String
+  keyPrefix  String                          // First 8 chars for display
+  keyHash    String    @unique               // SHA-256 hash
+  scopes     String[]                         // Array of scope strings
+  rateLimit  Int       @default(60)
+  isSandbox  Boolean   @default(true)
+  isActive   Boolean   @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+// ---- Audit Logs ----
+// 100% API call coverage, queryable, 90-day retention
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  method         String
+  endpoint       String
+  merchantId     String?
+  customerId     String?
+  tokenId        String?
+  requestBody    Json?
+  responseCode   Int
+  responseTimeMs Int
+  ipAddress      String?
+  userAgent      String?
+  timestamp      DateTime @default(now())
+
+  @@index([merchantId])
+  @@index([customerId])
+  @@index([tokenId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+// ---- Idempotency Records ----
+// 24hr TTL, generic middleware
+
+model IdempotencyRecord {
+  id           String   @id @default(uuid())
+  key          String   @unique
+  method       String
+  endpoint     String
+  responseCode Int
+  responseBody Json
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime
+
+  @@index([key])
+  @@index([expiresAt])
+  @@map("idempotency_records")
+}
+
+// ---- Webhook Endpoints ----
+
+model WebhookEndpoint {
+  id         String   @id @default(uuid())
+  merchantId String
+  url        String
+  secret     String
+  events     String[]
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  merchant   Merchant          @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@index([merchantId])
+  @@map("webhook_endpoints")
+}
+
+// ---- Webhook Deliveries ----
+
+model WebhookDelivery {
+  id                 String    @id @default(uuid())
+  webhookEndpointId  String
+  eventType          String
+  payload            Json
+  responseCode       Int?
+  responseBody       String?
+  attempts           Int       @default(0)
+  nextRetryAt        DateTime?
+  deliveredAt        DateTime?
+  createdAt          DateTime  @default(now())
+
+  webhookEndpoint WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id], onDelete: Cascade)
+
+  @@index([webhookEndpointId])
+  @@index([nextRetryAt])
+  @@map("webhook_deliveries")
+}

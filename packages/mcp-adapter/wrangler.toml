@@ -1,0 +1,10 @@
+name = "tokento-mcp"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[vars]
+API_BASE_URL = "http://localhost:4000"
+
+# Uncomment for production
+# [env.production.vars]
+# API_BASE_URL = "https://api.tokento.com"
