@@ -97,7 +97,7 @@ export function authenticateApiKey(requiredScopes: string[] = []) {
       prisma.apiKey.update({
         where: { id: apiKey.id },
         data: { lastUsedAt: new Date() },
-      }).catch((err) => {
+      }).catch((err: unknown) => {
         logger.warn({ err }, 'Failed to update API key lastUsedAt');
       });
 

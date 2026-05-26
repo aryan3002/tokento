@@ -18,7 +18,8 @@ router.post('/:id/redeem',
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = RedeemTokenSchema.parse(req.body);
-      const result = await redemptionService.redeem(req.params.id, data);
+      const tokenId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const result = await redemptionService.redeem(tokenId, data);
       res.json(result);
     } catch (err) { next(err); }
   }
