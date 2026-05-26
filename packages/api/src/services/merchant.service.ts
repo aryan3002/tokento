@@ -4,8 +4,7 @@
 import prisma from '../db/client';
 import { logger } from '../utils/logger';
 import { emitEvent } from '../events/emitter';
-import { generateApiKey, generateId } from '../utils/ids';
-import { generateWebhookSecret } from '../utils/crypto';
+import { generateApiKey } from '../utils/ids';
 import { EventType, ALL_SCOPES } from '@tokento/shared';
 import { AppError } from '../middleware/error.middleware';
 

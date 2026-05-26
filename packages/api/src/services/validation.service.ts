@@ -18,7 +18,6 @@ import {
   ValidateTokenResponse,
   ValidationReasonCode,
 } from '@tokento/shared';
-import { AppError } from '../middleware/error.middleware';
 
 export class ValidationService {
   /**

@@ -3,7 +3,7 @@
 // ============================================================
 import { Router, Request, Response, NextFunction } from 'express';
 import { merchantService } from '../services/merchant.service';
-import { authenticateApiKey, authenticateApiKeyOrB2BSession } from '../middleware/auth.middleware';
+import { authenticateApiKeyOrB2BSession } from '../middleware/auth.middleware';
 import { CreateMerchantSchema, UpdateMerchantConfigSchema, CreateEarnRuleSchema, UpdateEarnRuleSchema, CreateApiKeySchema, CreateWebhookEndpointSchema } from '@tokento/shared';
 import { webhookService } from '../services/webhook.service';
 
