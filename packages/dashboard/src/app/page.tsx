@@ -5,6 +5,21 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 const API_KEY =
   process.env.NEXT_PUBLIC_TOKENTO_API_KEY ||
   "tk_dev_local_sandbox_key_do_not_use_in_production_0000000000000000";
+const B2B_SESSION_STORAGE_KEY = "tokento_b2b_session_jwt";
+
+function getB2BSessionJwt(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(B2B_SESSION_STORAGE_KEY);
+}
+
+function setB2BSessionJwt(value: string | null): void {
+  if (typeof window === "undefined") return;
+  if (!value) {
+    window.localStorage.removeItem(B2B_SESSION_STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(B2B_SESSION_STORAGE_KEY, value);
+}
 
 type Token = {
   id: string;
@@ -79,13 +94,20 @@ const SERVICES = [
 ];
 
 async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+  const sessionJwt = getB2BSessionJwt();
+  const headers = new Headers(init.headers);
+  headers.set("Content-Type", "application/json");
+  if (sessionJwt) {
+    headers.set("Authorization", `Bearer ${sessionJwt}`);
+    headers.delete("X-API-Key");
+  } else {
+    headers.set("X-API-Key", API_KEY);
+    headers.delete("Authorization");
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": API_KEY,
-      ...(init.headers || {}),
-    },
+    headers,
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
@@ -98,6 +120,9 @@ async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T
 export default function Dashboard() {
   const [tab, setTab] = useState<Tab>("overview");
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
+  const [b2bSessionJwt, setB2BSessionJwtState] = useState<string | null>(() => getB2BSessionJwt());
+  const [sessionInput, setSessionInput] = useState("");
+  const [authWarning, setAuthWarning] = useState<string | null>(null);
   const [serviceStatus, setServiceStatus] = useState<Record<string, "checking" | "up" | "down">>({});
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [lastEventAt, setLastEventAt] = useState<string | null>(null);
@@ -107,6 +132,33 @@ export default function Dashboard() {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [earnRules, setEarnRules] = useState<EarnRule[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+
+  const updateSessionJwt = useCallback((next: string | null) => {
+    setB2BSessionJwt(next);
+    setB2BSessionJwtState(next);
+  }, []);
+
+  useEffect(() => {
+    if (b2bSessionJwt) {
+      return;
+    }
+
+    fetch(`${API_BASE}/api/v1/auth/b2b/dev-session`)
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const body = await res.json();
+        return typeof body?.sessionJwt === "string" ? body.sessionJwt : null;
+      })
+      .then((sessionJwt) => {
+        if (sessionJwt) {
+          updateSessionJwt(sessionJwt);
+          setAuthWarning("Using dev fallback B2B session. Real Stytch keys are required before merge.");
+        }
+      })
+      .catch(() => {
+        setAuthWarning("No B2B session found. Paste a Stytch B2B session JWT in Settings.");
+      });
+  }, [b2bSessionJwt, updateSessionJwt]);
 
   const refreshAll = useCallback(async () => {
     try {
@@ -127,7 +179,9 @@ export default function Dashboard() {
 
   // Initial fetch
   useEffect(() => {
-    refreshAll();
+    void Promise.resolve().then(() => {
+      refreshAll();
+    });
   }, [refreshAll]);
 
   // SSE subscription — replaces 3s polling
@@ -138,7 +192,10 @@ export default function Dashboard() {
     const connect = () => {
       if (cancelled) return;
       setConnection("connecting");
-      const url = `${API_BASE}/api/v1/events/stream?apiKey=${encodeURIComponent(API_KEY)}`;
+      const authQuery = b2bSessionJwt
+        ? `sessionJwt=${encodeURIComponent(b2bSessionJwt)}`
+        : `apiKey=${encodeURIComponent(API_KEY)}`;
+      const url = `${API_BASE}/api/v1/events/stream?${authQuery}`;
       const es = new EventSource(url);
       esRef.current = es;
 
@@ -214,7 +271,7 @@ export default function Dashboard() {
       cancelled = true;
       esRef.current?.close();
     };
-  }, []);
+  }, [b2bSessionJwt]);
 
   const checkServices = async () => {
     for (const svc of SERVICES) {
@@ -317,10 +374,28 @@ export default function Dashboard() {
           {tab === "redemptions" && <RedemptionsTab redemptions={redemptions} />}
           {tab === "settings" && merchant && (
             <SettingsTab
+              key={merchant.id}
               apiKey={API_KEY}
               visible={apiKeyVisible}
               onToggle={() => setApiKeyVisible(!apiKeyVisible)}
               merchant={merchant}
+              b2bSessionJwt={b2bSessionJwt}
+              sessionInput={sessionInput}
+              setSessionInput={setSessionInput}
+              authWarning={authWarning}
+              onSessionSave={() => {
+                const trimmed = sessionInput.trim();
+                if (!trimmed) return;
+                updateSessionJwt(trimmed);
+                setSessionInput("");
+                setAuthWarning(null);
+                refreshAll();
+              }}
+              onSessionClear={() => {
+                updateSessionJwt(null);
+                setAuthWarning("B2B session cleared. Dashboard will fall back to API key auth.");
+                refreshAll();
+              }}
               onSaved={refreshAll}
             />
           )}
@@ -656,12 +731,24 @@ function SettingsTab({
   visible,
   onToggle,
   merchant,
+  b2bSessionJwt,
+  sessionInput,
+  setSessionInput,
+  authWarning,
+  onSessionSave,
+  onSessionClear,
   onSaved,
 }: {
   apiKey: string;
   visible: boolean;
   onToggle: () => void;
   merchant: Merchant;
+  b2bSessionJwt: string | null;
+  sessionInput: string;
+  setSessionInput: (value: string) => void;
+  authWarning: string | null;
+  onSessionSave: () => void;
+  onSessionClear: () => void;
   onSaved: () => void;
 }) {
   const [agentOptIn, setAgentOptIn] = useState(merchant.agentOptIn);
@@ -669,11 +756,6 @@ function SettingsTab({
   const [savingToggle, setSavingToggle] = useState(false);
   const [savingWebhook, setSavingWebhook] = useState(false);
   const [webhookError, setWebhookError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setAgentOptIn(merchant.agentOptIn);
-    setWebhookUrl(merchant.webhookUrl || "");
-  }, [merchant]);
 
   const flipToggle = async () => {
     const next = !agentOptIn;
@@ -712,6 +794,38 @@ function SettingsTab({
 
   return (
     <div className="space-y-6 stagger-children max-w-2xl">
+      <div className="glass rounded-xl p-5">
+        <h3 className="font-semibold mb-4">Stytch B2B Session</h3>
+        <p className="text-xs text-text-muted mb-3">
+          Dashboard calls use <code className="bg-surface-3 px-1 rounded">Authorization: Bearer &lt;session_jwt&gt;</code>.
+          API keys remain supported for server-to-server calls.
+        </p>
+        <div className="space-y-3">
+          <div className="text-xs">
+            Status:{" "}
+            <span className={b2bSessionJwt ? "text-success" : "text-warning"}>
+              {b2bSessionJwt ? "Session active" : "No session loaded"}
+            </span>
+          </div>
+          <textarea
+            value={sessionInput}
+            onChange={(e) => setSessionInput(e.target.value)}
+            rows={3}
+            placeholder="Paste Stytch B2B session JWT"
+            className="w-full bg-surface-3 border border-border rounded-lg px-3 py-2 text-xs font-mono"
+          />
+          <div className="flex gap-2">
+            <button type="button" onClick={onSessionSave} className="px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium transition-colors">
+              Save session
+            </button>
+            <button type="button" onClick={onSessionClear} className="px-3 py-2 rounded-lg bg-surface-3 hover:bg-surface-4 text-xs font-medium transition-colors">
+              Clear session
+            </button>
+          </div>
+          {authWarning && <p className="text-xs text-warning">{authWarning}</p>}
+        </div>
+      </div>
+
       <div className="glass rounded-xl p-5">
         <h3 className="font-semibold mb-4">API Key</h3>
         <div className="flex items-center gap-3">

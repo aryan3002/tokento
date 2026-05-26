@@ -50,6 +50,9 @@ importers:
       pino-pretty:
         specifier: ^13.0.0
         version: 13.1.3
+      stytch:
+        specifier: ^14.0.0
+        version: 14.0.0
       uuid:
         specifier: ^11.1.0
         version: 11.1.1
@@ -2946,6 +2949,9 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
+  jose@5.10.0:
+    resolution: {integrity: sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg==}
+
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
@@ -3722,6 +3728,10 @@ packages:
       babel-plugin-macros:
         optional: true
 
+  stytch@14.0.0:
+    resolution: {integrity: sha512-W4C6JaP/GiMMbKGZ40ECNoNajkcvF7oJAo114ZcycF34P+HXML5B/28xRwwlZh9CJzAinQ33/cDw9/9imCnv/Q==}
+    engines: {node: '>= 18.0.0'}
+
   superagent@10.3.0:
     resolution: {integrity: sha512-B+4Ik7ROgVKrQsXTV0Jwp2u+PXYLSlqtDAhYnkkD+zn3yg8s/zjA2MeGayPoY/KICrbitwneDHrjSotxKL+0XQ==}
     engines: {node: '>=14.18.0'}
@@ -3852,6 +3862,10 @@ packages:
   undici@5.29.0:
     resolution: {integrity: sha512-raqeBD6NQK4SkWhQzeYKd1KmIG6dllBOTt55Rmkt4HtI9mwdWtJljnrXjAFUBLTSN67HWrOIZ3EPF4kjUw80Bg==}
     engines: {node: '>=14.0'}
+
+  undici@6.26.0:
+    resolution: {integrity: sha512-4yqz8a3n5HmGTlsbADNtr/dJlhkh/55Rq798G6ibiULcXbDtaLpTl1pvdqcbFfeoj3iSi52lePFM7h9H21cw/A==}
+    engines: {node: '>=18.17'}
 
   unenv@2.0.0-rc.14:
     resolution: {integrity: sha512-od496pShMen7nOy5VmVJCnq8rptd45vh6Nx/r2iPbrba6pa6p+tS2ywuIHRZ/OBvSbQZB0kWvpO9XBNVFXHD3Q==}
@@ -6823,6 +6837,8 @@ snapshots:
 
   jiti@2.7.0: {}
 
+  jose@5.10.0: {}
+
   joycon@3.1.1: {}
 
   js-tokens@4.0.0: {}
@@ -7697,6 +7713,11 @@ snapshots:
     optionalDependencies:
       '@babel/core': 7.29.0
 
+  stytch@14.0.0:
+    dependencies:
+      jose: 5.10.0
+      undici: 6.26.0
+
   superagent@10.3.0:
     dependencies:
       component-emitter: 1.3.1
@@ -7853,6 +7874,8 @@ snapshots:
   undici@5.29.0:
     dependencies:
       '@fastify/busboy': 2.1.1
+
+  undici@6.26.0: {}
 
   unenv@2.0.0-rc.14:
     dependencies:
