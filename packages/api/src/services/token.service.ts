@@ -6,6 +6,7 @@
 
 import prisma from '../db/client';
 import redis from '../db/redis';
+import { v4 as uuidv4 } from 'uuid';
 import { signToken } from '../utils/crypto';
 import { logger } from '../utils/logger';
 import { emitEvent } from '../events/emitter';
@@ -86,7 +87,7 @@ export class TokenService {
     expiryAt.setDate(expiryAt.getDate() + earnRule.expiryDays);
 
     // Generate token ID for signing
-    const tokenId = require('uuid').v4();
+    const tokenId = uuidv4();
 
     // Sign the token
     const signature = signToken({

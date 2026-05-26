@@ -3,7 +3,7 @@
 // ============================================================
 import prisma from '../db/client';
 import { logger } from '../utils/logger';
-import { eventBus, emitEvent } from '../events/emitter';
+import { eventBus } from '../events/emitter';
 import { generateWebhookSecret, signWebhookPayload } from '../utils/crypto';
 import { EventType, WEBHOOK } from '@tokento/shared';
 import { AppError } from '../middleware/error.middleware';

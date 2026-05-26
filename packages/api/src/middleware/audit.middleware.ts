@@ -22,11 +22,8 @@ export function auditLog() {
     const originalEnd = res.end;
     const originalJson = res.json;
 
-    let responseBody: unknown = null;
-
-    // Override res.json to capture response
+    // Keep original json function bound to preserve express semantics.
     res.json = function (body: unknown) {
-      responseBody = body;
       return originalJson.call(this, body);
     };
 
