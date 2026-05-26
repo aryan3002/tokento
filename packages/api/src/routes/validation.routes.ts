@@ -16,7 +16,8 @@ router.post('/:id/validate',
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = ValidateTokenSchema.parse(req.body);
-      const result = await validationService.validate(req.params.id, data);
+      const tokenId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const result = await validationService.validate(tokenId, data);
       res.json(result);
     } catch (err) { next(err); }
   }

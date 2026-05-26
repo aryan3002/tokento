@@ -6,6 +6,7 @@
 // 90-day retention minimum.
 
 import { Request, Response, NextFunction } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../db/client';
 import { logger } from '../utils/logger';
 
@@ -47,15 +48,15 @@ export function auditLog() {
             customerId: req.customerId || null,
             tokenId,
             requestBody: req.body && Object.keys(req.body).length > 0
-              ? sanitizeBody(req.body)
-              : null,
+              ? (sanitizeBody(req.body) as Prisma.InputJsonObject)
+              : Prisma.JsonNull,
             responseCode: res.statusCode,
             responseTimeMs,
             ipAddress: req.ip || null,
             userAgent: req.headers['user-agent'] || null,
           },
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
           logger.error({ err }, 'Failed to write audit log');
         });
 

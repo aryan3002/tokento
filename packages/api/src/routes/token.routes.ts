@@ -37,7 +37,8 @@ router.get('/:id',
   authenticateApiKey(['tokens:read']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const token = await tokenService.getById(req.params.id);
+      const tokenId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      const token = await tokenService.getById(tokenId);
       if (!token) {
         res.status(404).json({ error: { code: 'token_not_found', message: 'Token not found.' }, requestId: req.requestId });
         return;

@@ -54,7 +54,8 @@ router.get('/me/earn-rules', authenticateApiKey(['earn_rules:read']), async (req
 router.put('/me/earn-rules/:ruleId', authenticateApiKey(['earn_rules:write']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = UpdateEarnRuleSchema.parse(req.body);
-    const rule = await merchantService.updateEarnRule(req.merchantId!, req.params.ruleId, data);
+    const ruleId = Array.isArray(req.params.ruleId) ? req.params.ruleId[0] : req.params.ruleId;
+    const rule = await merchantService.updateEarnRule(req.merchantId!, ruleId, data);
     res.json(rule);
   } catch (err) { next(err); }
 });
@@ -92,7 +93,8 @@ router.get('/me/api-keys', authenticateApiKey(['merchants:read']), async (req: R
 
 router.delete('/me/api-keys/:keyId', authenticateApiKey(['merchants:write']), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await merchantService.revokeApiKey(req.merchantId!, req.params.keyId);
+    const keyId = Array.isArray(req.params.keyId) ? req.params.keyId[0] : req.params.keyId;
+    await merchantService.revokeApiKey(req.merchantId!, keyId);
     res.status(204).send();
   } catch (err) { next(err); }
 });
@@ -115,7 +117,8 @@ router.get('/me/webhooks', authenticateApiKey(['webhooks:read']), async (req: Re
 
 router.delete('/me/webhooks/:endpointId', authenticateApiKey(['webhooks:write']), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await webhookService.deleteEndpoint(req.merchantId!, req.params.endpointId);
+    const endpointId = Array.isArray(req.params.endpointId) ? req.params.endpointId[0] : req.params.endpointId;
+    await webhookService.deleteEndpoint(req.merchantId!, endpointId);
     res.status(204).send();
   } catch (err) { next(err); }
 });

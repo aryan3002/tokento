@@ -9,7 +9,8 @@ import redis from '../db/redis';
 import { signToken } from '../utils/crypto';
 import { logger } from '../utils/logger';
 import { emitEvent } from '../events/emitter';
-import { EventType, TokenStatus, MintTokenRequest, MintTokenResponse } from '@tokento/shared';
+import { Token as PrismaToken } from '@prisma/client';
+import { EventType, Token, TokenType, TokenStatus, MintTokenRequest, MintTokenResponse } from '@tokento/shared';
 import { AppError } from '../middleware/error.middleware';
 
 export class TokenService {
@@ -105,7 +106,7 @@ export class TokenService {
         customerId,
         earnRuleId,
         denomination: earnRule.tokenDenomination,
-        tokenType: 'loyalty',
+        tokenType: TokenType.LOYALTY,
         status: TokenStatus.ACTIVE,
         signature,
         idempotencyKey,
@@ -165,7 +166,7 @@ export class TokenService {
       if (keys.length > 0) {
         await redis.del(...keys);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       logger.warn({ err, customerId }, 'Failed to invalidate wallet cache');
     }
   }
@@ -173,36 +174,15 @@ export class TokenService {
   /**
    * Map Prisma token to API response type.
    */
-  private mapToken(token: {
-    id: string;
-    merchantId: string;
-    customerId: string;
-    earnRuleId: string;
-    denomination: number;
-    tokenType: string;
-    status: string;
-    signature: string;
-    idempotencyKey: string;
-    categoryRestriction: string | null;
-    channelRestriction: string | null;
-    stackabilityFlag: boolean;
-    agentPresentableFlag: boolean;
-    minimumTransactionFloor: number;
-    issuedAt: Date;
-    expiryAt: Date;
-    redeemedAt: Date | null;
-    createdAt: Date;
-    updatedAt: Date;
-    isSandbox: boolean;
-  }) {
+  private mapToken(token: PrismaToken): Token {
     return {
       id: token.id,
       merchantId: token.merchantId,
       customerId: token.customerId,
       earnRuleId: token.earnRuleId,
       denomination: token.denomination,
-      tokenType: token.tokenType,
-      status: token.status,
+      tokenType: token.tokenType as TokenType,
+      status: token.status as TokenStatus,
       signature: token.signature,
       idempotencyKey: token.idempotencyKey,
       categoryRestriction: token.categoryRestriction,

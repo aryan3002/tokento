@@ -63,7 +63,7 @@ export function idempotency() {
               expiresAt,
             },
           })
-          .catch((err) => {
+          .catch((err: unknown) => {
             logger.error({ err, key }, 'Failed to cache idempotency response');
           });
 
