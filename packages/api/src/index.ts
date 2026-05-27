@@ -1,7 +1,7 @@
 // ============================================================
 // Tokento — API Server Entry Point
 // ============================================================
-import 'dotenv/config';
+import './config/env';
 import fs from 'fs';
 import path from 'path';
 import express from 'express';

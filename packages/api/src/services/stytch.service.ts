@@ -3,11 +3,13 @@ import prisma from '../db/client';
 
 const STYTCH_PROJECT_ID = process.env.STYTCH_PROJECT_ID || 'test-project';
 const STYTCH_SECRET = process.env.STYTCH_SECRET || 'test-secret';
+const STYTCH_B2B_PROJECT_ID = process.env.STYTCH_B2B_PROJECT_ID || STYTCH_PROJECT_ID;
+const STYTCH_B2B_SECRET = process.env.STYTCH_B2B_SECRET || STYTCH_SECRET;
 const STYTCH_ENV = process.env.STYTCH_ENV === 'live' ? envs.live : envs.test;
 
 const b2bClient = new B2BClient({
-  project_id: STYTCH_PROJECT_ID,
-  secret: STYTCH_SECRET,
+  project_id: STYTCH_B2B_PROJECT_ID,
+  secret: STYTCH_B2B_SECRET,
   env: STYTCH_ENV,
 });
 
@@ -18,7 +20,9 @@ const b2cClient = new Client({
 });
 
 export function usingPlaceholderStytchConfig(): boolean {
-  return STYTCH_PROJECT_ID === 'test-project' && STYTCH_SECRET === 'test-secret';
+  const b2cPlaceholder = STYTCH_PROJECT_ID === 'test-project' && STYTCH_SECRET === 'test-secret';
+  const b2bPlaceholder = STYTCH_B2B_PROJECT_ID === 'test-project' && STYTCH_B2B_SECRET === 'test-secret';
+  return b2cPlaceholder && b2bPlaceholder;
 }
 
 function parseDevB2BToken(sessionJwt: string): {

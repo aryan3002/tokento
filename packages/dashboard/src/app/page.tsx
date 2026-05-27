@@ -6,6 +6,7 @@ const API_KEY =
   process.env.NEXT_PUBLIC_TOKENTO_API_KEY ||
   "tk_dev_local_sandbox_key_do_not_use_in_production_0000000000000000";
 const B2B_SESSION_STORAGE_KEY = "tokento_b2b_session_jwt";
+const B2B_SESSION_CLEARED_EVENT = "tokento:b2b-session-cleared";
 
 function getB2BSessionJwt(): string | null {
   if (typeof window === "undefined") return null;
@@ -118,8 +119,7 @@ const SERVICES = [
   { name: "Redis", url: null, port: 6379 },
 ];
 
-async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
-  const sessionJwt = getB2BSessionJwt();
+function buildAuthHeaders(init: RequestInit, sessionJwt: string | null): Headers {
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
   if (sessionJwt) {
@@ -129,15 +129,46 @@ async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T
     headers.set("X-API-Key", API_KEY);
     headers.delete("Authorization");
   }
+  return headers;
+}
 
-  const res = await fetch(`${API_BASE}${path}`, {
+function isB2BAuthFailure(status: number, body: string): boolean {
+  return (
+    status === 401 ||
+    status === 403 ||
+    body.includes('"auth_error"') ||
+    body.includes("stytch_") ||
+    body.includes("dev_session_disabled")
+  );
+}
+
+async function fetchWithAuth(path: string, init: RequestInit, sessionJwt: string | null): Promise<Response> {
+  return fetch(`${API_BASE}${path}`, {
     ...init,
-    headers,
+    headers: buildAuthHeaders(init, sessionJwt),
   });
+}
+
+async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T> {
+  const sessionJwt = getB2BSessionJwt();
+  let res = await fetchWithAuth(path, init, sessionJwt);
+  let body = "";
+
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
+    body = await res.text().catch(() => "");
+
+    if (sessionJwt && isB2BAuthFailure(res.status, body)) {
+      setB2BSessionJwt(null);
+      window.dispatchEvent(new CustomEvent(B2B_SESSION_CLEARED_EVENT));
+      res = await fetchWithAuth(path, init, null);
+      body = res.ok ? "" : await res.text().catch(() => "");
+    }
+  }
+
+  if (!res.ok) {
     throw new Error(`${res.status} ${res.statusText}: ${body || path}`);
   }
+
   if (res.status === 204) return undefined as T;
   return res.json();
 }
@@ -163,6 +194,17 @@ export default function Dashboard() {
   const updateSessionJwt = useCallback((next: string | null) => {
     setB2BSessionJwt(next);
     setB2BSessionJwtState(next);
+  }, []);
+
+  useEffect(() => {
+    const handleSessionCleared = () => {
+      setB2BSessionJwtState(null);
+      setSessionInput("");
+      setAuthWarning("Stored B2B session was rejected. Dashboard retried with the local API key.");
+    };
+
+    window.addEventListener(B2B_SESSION_CLEARED_EVENT, handleSessionCleared);
+    return () => window.removeEventListener(B2B_SESSION_CLEARED_EVENT, handleSessionCleared);
   }, []);
 
   useEffect(() => {
