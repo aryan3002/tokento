@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => {
       findMany: vi.fn(),
     },
     webhookDelivery: {
+      findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
     },
@@ -46,6 +47,7 @@ describe('webhook service retry behavior', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: false,
       status: 500,
+      text: vi.fn(async () => 'upstream failed'),
     } as Response)));
 
     mocks.prismaMock.webhookEndpoint.findMany.mockResolvedValue([{
@@ -60,6 +62,7 @@ describe('webhook service retry behavior', () => {
       id: 'delivery-1',
     });
     mocks.prismaMock.webhookDelivery.update.mockResolvedValue({});
+    mocks.prismaMock.webhookDelivery.findMany.mockResolvedValue([]);
   });
 
   it('schedules retry when webhook delivery response is not ok', async () => {
@@ -75,5 +78,37 @@ describe('webhook service retry behavior', () => {
     expect(updateCall?.data?.responseCode).toBe(500);
     expect(updateCall?.data?.nextRetryAt).toBeInstanceOf(Date);
     expect(updateCall?.data?.deliveredAt).toBeNull();
+  });
+
+  it('lists webhook deliveries with endpoint metadata and retry count', async () => {
+    mocks.prismaMock.webhookDelivery.findMany.mockResolvedValue([{
+      id: 'delivery-2',
+      webhookEndpointId: 'endpoint-1',
+      eventType: EventType.TOKEN_REDEEMED,
+      responseCode: 500,
+      responseBody: 'upstream_failed',
+      attempts: 3,
+      nextRetryAt: new Date('2026-05-26T20:00:00.000Z'),
+      deliveredAt: null,
+      createdAt: new Date('2026-05-26T19:00:00.000Z'),
+      webhookEndpoint: {
+        id: 'endpoint-1',
+        url: 'https://example.test/webhook',
+      },
+    }]);
+
+    const results = await webhookService.listDeliveries('merchant-1', {
+      endpointId: 'endpoint-1',
+      limit: 10,
+    });
+
+    expect(mocks.prismaMock.webhookDelivery.findMany).toHaveBeenCalledTimes(1);
+    const where = mocks.prismaMock.webhookDelivery.findMany.mock.calls[0]?.[0]?.where;
+    expect(where.webhookEndpoint.merchantId).toBe('merchant-1');
+    expect(where.webhookEndpointId).toBe('endpoint-1');
+
+    expect(results).toHaveLength(1);
+    expect(results[0].endpointUrl).toBe('https://example.test/webhook');
+    expect(results[0].retryCount).toBe(2);
   });
 });

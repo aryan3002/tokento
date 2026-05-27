@@ -72,7 +72,31 @@ type Merchant = {
   isSandbox: boolean;
 };
 
-type Tab = "overview" | "tokens" | "rules" | "redemptions" | "settings" | "demo" | "status";
+type WebhookEndpoint = {
+  id: string;
+  merchantId: string;
+  url: string;
+  events: string[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type WebhookDelivery = {
+  id: string;
+  webhookEndpointId: string;
+  endpointUrl: string;
+  eventType: string;
+  responseCode: number | null;
+  responseBody: string | null;
+  attempts: number;
+  retryCount: number;
+  nextRetryAt: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+};
+
+type Tab = "overview" | "tokens" | "rules" | "redemptions" | "webhooks" | "settings" | "demo" | "status";
 
 type ConnectionState = "connecting" | "live" | "down";
 
@@ -81,6 +105,7 @@ const TAB_DEFS: { key: Tab; label: string; icon: string }[] = [
   { key: "tokens", label: "Tokens", icon: "🎫" },
   { key: "rules", label: "Earn Rules", icon: "⚙️" },
   { key: "redemptions", label: "Redemptions", icon: "💰" },
+  { key: "webhooks", label: "Webhooks", icon: "🔔" },
   { key: "settings", label: "Settings", icon: "🔑" },
   { key: "demo", label: "Demo Wiring", icon: "🤖" },
   { key: "status", label: "System Status", icon: "🟢" },
@@ -132,6 +157,8 @@ export default function Dashboard() {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [earnRules, setEarnRules] = useState<EarnRule[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+  const [webhookEndpoints, setWebhookEndpoints] = useState<WebhookEndpoint[]>([]);
+  const [webhookDeliveries, setWebhookDeliveries] = useState<WebhookDelivery[]>([]);
 
   const updateSessionJwt = useCallback((next: string | null) => {
     setB2BSessionJwt(next);
@@ -160,18 +187,35 @@ export default function Dashboard() {
       });
   }, [b2bSessionJwt, updateSessionJwt]);
 
+  const refreshWebhookData = useCallback(async () => {
+    try {
+      const [endpoints, deliveries] = await Promise.all([
+        api<WebhookEndpoint[]>("/api/v1/merchants/me/webhooks"),
+        api<WebhookDelivery[]>("/api/v1/merchants/me/webhooks/deliveries?limit=20"),
+      ]);
+      setWebhookEndpoints(Array.isArray(endpoints) ? endpoints : []);
+      setWebhookDeliveries(Array.isArray(deliveries) ? deliveries : []);
+    } catch {
+      // ignore transient webhook-refresh errors
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     try {
-      const [m, t, r, rd] = await Promise.all([
+      const [m, t, r, rd, endpoints, deliveries] = await Promise.all([
         api<Merchant>("/api/v1/merchants/me"),
         api<Token[]>("/api/v1/merchants/me/tokens"),
         api<EarnRule[]>("/api/v1/merchants/me/earn-rules"),
         api<Redemption[]>("/api/v1/merchants/me/redemptions"),
+        api<WebhookEndpoint[]>("/api/v1/merchants/me/webhooks"),
+        api<WebhookDelivery[]>("/api/v1/merchants/me/webhooks/deliveries?limit=20"),
       ]);
       setMerchant(m);
       setTokens(Array.isArray(t) ? t : []);
       setEarnRules(Array.isArray(r) ? r : []);
       setRedemptions(Array.isArray(rd) ? rd : []);
+      setWebhookEndpoints(Array.isArray(endpoints) ? endpoints : []);
+      setWebhookDeliveries(Array.isArray(deliveries) ? deliveries : []);
     } catch (err) {
       console.error("Initial fetch failed", err);
     }
@@ -210,6 +254,7 @@ export default function Dashboard() {
         api<Token[]>("/api/v1/merchants/me/tokens").then((next) => {
           if (Array.isArray(next)) setTokens(next);
         }).catch(() => {});
+        refreshWebhookData();
         flashRow(payload.tokenId);
       });
 
@@ -238,6 +283,7 @@ export default function Dashboard() {
           },
           ...prev,
         ]);
+        refreshWebhookData();
         flashRow(payload.tokenId);
       });
 
@@ -271,7 +317,7 @@ export default function Dashboard() {
       cancelled = true;
       esRef.current?.close();
     };
-  }, [b2bSessionJwt]);
+  }, [b2bSessionJwt, refreshWebhookData]);
 
   const checkServices = async () => {
     for (const svc of SERVICES) {
@@ -372,6 +418,13 @@ export default function Dashboard() {
           )}
           {tab === "rules" && <EarnRulesTab rules={earnRules} onCreated={refreshAll} />}
           {tab === "redemptions" && <RedemptionsTab redemptions={redemptions} />}
+          {tab === "webhooks" && (
+            <WebhooksTab
+              endpoints={webhookEndpoints}
+              deliveries={webhookDeliveries}
+              onChanged={refreshWebhookData}
+            />
+          )}
           {tab === "settings" && merchant && (
             <SettingsTab
               key={merchant.id}
@@ -721,6 +774,199 @@ function RedemptionsTab({ redemptions }: { redemptions: Redemption[] }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/* ---- Webhooks ---- */
+function WebhooksTab({
+  endpoints,
+  deliveries,
+  onChanged,
+}: {
+  endpoints: WebhookEndpoint[];
+  deliveries: WebhookDelivery[];
+  onChanged: () => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [eventMinted, setEventMinted] = useState(true);
+  const [eventRedeemed, setEventRedeemed] = useState(true);
+  const [eventExpired, setEventExpired] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const createEndpoint = async (e: FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+
+    const events = [
+      eventMinted ? "token.minted" : null,
+      eventRedeemed ? "token.redeemed" : null,
+      eventExpired ? "token.expired" : null,
+    ].filter((value): value is string => Boolean(value));
+
+    if (events.length === 0) {
+      setError("Select at least one event type.");
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      await api("/api/v1/merchants/me/webhooks", {
+        method: "POST",
+        body: JSON.stringify({ url, events }),
+      });
+      setUrl("");
+      setEventMinted(true);
+      setEventRedeemed(true);
+      setEventExpired(false);
+      onChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const deleteEndpoint = async (endpointId: string) => {
+    setDeletingId(endpointId);
+    try {
+      await api(`/api/v1/merchants/me/webhooks/${endpointId}`, { method: "DELETE" });
+      onChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6 max-w-5xl">
+      <form onSubmit={createEndpoint} className="glass rounded-xl p-5 space-y-4">
+        <h3 className="font-semibold">Create Webhook Endpoint</h3>
+        <div className="space-y-2">
+          <label className="text-sm text-text-secondary">Endpoint URL</label>
+          <input
+            required
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://webhook.site/your-id"
+            className="w-full bg-surface-3 border border-border rounded-lg px-4 py-3 text-sm placeholder:text-text-muted focus:outline-none focus:border-brand-500 transition-colors"
+          />
+        </div>
+        <div>
+          <p className="text-sm text-text-secondary mb-2">Event types</p>
+          <div className="flex flex-wrap gap-3 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={eventMinted} onChange={(e) => setEventMinted(e.target.checked)} />
+              <span>token.minted</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={eventRedeemed} onChange={(e) => setEventRedeemed(e.target.checked)} />
+              <span>token.redeemed</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={eventExpired} onChange={(e) => setEventExpired(e.target.checked)} />
+              <span>token.expired</span>
+            </label>
+          </div>
+        </div>
+        {error && <p className="text-xs text-error">{error}</p>}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="px-4 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors disabled:opacity-60"
+        >
+          {submitting ? "Creating…" : "Create endpoint"}
+        </button>
+      </form>
+
+      <div className="glass rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-semibold">Configured Endpoints</h3>
+          <span className="text-xs text-text-muted">{endpoints.length} total</span>
+        </div>
+        {endpoints.length === 0 ? (
+          <p className="text-sm text-text-muted">No webhook endpoints configured yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {endpoints.map((endpoint) => (
+              <div key={endpoint.id} className="border border-border rounded-lg p-4 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium break-all">{endpoint.url}</p>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {endpoint.events.map((eventType) => (
+                      <span key={eventType} className="text-xs bg-surface-3 px-2 py-0.5 rounded-full">
+                        {eventType}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="text-xs text-text-muted mt-2">
+                    Created {new Date(endpoint.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => deleteEndpoint(endpoint.id)}
+                  disabled={deletingId === endpoint.id}
+                  className="px-3 py-1.5 rounded-lg bg-error/15 hover:bg-error/25 text-error text-xs font-medium transition-colors disabled:opacity-60 shrink-0"
+                >
+                  {deletingId === endpoint.id ? "Deleting…" : "Delete"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="glass rounded-xl overflow-hidden">
+        <div className="p-5 border-b border-border flex items-center justify-between">
+          <h3 className="font-semibold">Recent Deliveries</h3>
+          <span className="text-xs text-text-muted">{deliveries.length} shown</span>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-text-muted text-xs uppercase tracking-wider">
+              <th className="text-left p-4">Event</th>
+              <th className="text-left p-4">Endpoint</th>
+              <th className="text-left p-4">Attempts</th>
+              <th className="text-left p-4">Retry Count</th>
+              <th className="text-left p-4">Status</th>
+              <th className="text-left p-4">Last Attempt</th>
+            </tr>
+          </thead>
+          <tbody>
+            {deliveries.length === 0 && (
+              <tr>
+                <td colSpan={6} className="p-6 text-center text-sm text-text-muted">
+                  No delivery attempts yet. Trigger mint/redeem to see webhook deliveries.
+                </td>
+              </tr>
+            )}
+            {deliveries.map((delivery) => (
+              <tr key={delivery.id} className="border-b border-border/50 hover:bg-surface-2/50 transition-colors">
+                <td className="p-4 text-xs">{delivery.eventType}</td>
+                <td className="p-4 text-xs font-mono max-w-[280px] truncate" title={delivery.endpointUrl}>{delivery.endpointUrl}</td>
+                <td className="p-4 text-xs">{delivery.attempts}</td>
+                <td className="p-4 text-xs">{delivery.retryCount}</td>
+                <td className="p-4 text-xs">
+                  {delivery.deliveredAt ? (
+                    <span className="text-success">Delivered ({delivery.responseCode ?? "-"})</span>
+                  ) : delivery.nextRetryAt ? (
+                    <span className="text-warning">Retrying ({delivery.responseCode ?? "-"})</span>
+                  ) : (
+                    <span className="text-error">Failed ({delivery.responseCode ?? "-"})</span>
+                  )}
+                </td>
+                <td className="p-4 text-xs text-text-muted">{new Date(delivery.createdAt).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

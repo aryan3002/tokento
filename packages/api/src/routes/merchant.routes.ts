@@ -2,12 +2,17 @@
 // Tokento — Merchant Routes
 // ============================================================
 import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { merchantService } from '../services/merchant.service';
 import { authenticateApiKeyOrB2BSession } from '../middleware/auth.middleware';
 import { CreateMerchantSchema, UpdateMerchantConfigSchema, CreateEarnRuleSchema, UpdateEarnRuleSchema, CreateApiKeySchema, CreateWebhookEndpointSchema } from '@tokento/shared';
 import { webhookService } from '../services/webhook.service';
 
 const router = Router();
+const WebhookDeliveriesQuerySchema = z.object({
+  endpointId: z.string().uuid().optional(),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
 
 // POST /v1/merchants — Register (no auth required for registration)
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
@@ -112,6 +117,14 @@ router.get('/me/webhooks', authenticateApiKeyOrB2BSession(['webhooks:read']), as
   try {
     const endpoints = await webhookService.listEndpoints(req.merchantId!);
     res.json(endpoints);
+  } catch (err) { next(err); }
+});
+
+router.get('/me/webhooks/deliveries', authenticateApiKeyOrB2BSession(['webhooks:read']), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const query = WebhookDeliveriesQuerySchema.parse(req.query);
+    const deliveries = await webhookService.listDeliveries(req.merchantId!, query);
+    res.json(deliveries);
   } catch (err) { next(err); }
 });
 
