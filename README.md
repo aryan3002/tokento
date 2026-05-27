@@ -56,6 +56,22 @@ pnpm dev
 ```
 
 The API will be running at `http://localhost:4000`.
+The dashboard will be running at `http://localhost:3100`.
+
+### Stytch sandbox auth
+
+Tokento supports deterministic local auth with the placeholder Stytch values in `.env.example`. For a design-partner sandbox with real Stytch email links:
+
+1. Create/configure a Stytch B2B project and organization for the sandbox merchant.
+2. Set `STYTCH_B2B_PROJECT_ID`, `STYTCH_B2B_SECRET`, and `STYTCH_B2B_ORGANIZATION_ID`.
+3. Set B2C/customer `STYTCH_PROJECT_ID` and `STYTCH_SECRET` for checkout-widget wallet grants.
+4. Add these Stytch redirect URLs in test mode:
+   - `http://localhost:4000/api/v1/auth/b2b/magic-link/callback`
+   - `http://localhost:4000/api/v1/auth/b2c/widget/magic-link/callback`
+   - `http://localhost:3100/authenticate`
+5. Open the dashboard Settings tab and send a Stytch magic link to the merchant email. The callback stores the returned B2B session JWT automatically.
+
+`NEXT_PUBLIC_STYTCH_PUBLIC_TOKEN` is optional for the current backend-assisted flow. Never expose `STYTCH_SECRET` or `STYTCH_B2B_SECRET` through `NEXT_PUBLIC_*`.
 
 ### Test the API
 

@@ -5,6 +5,7 @@ const STYTCH_PROJECT_ID = process.env.STYTCH_PROJECT_ID || 'test-project';
 const STYTCH_SECRET = process.env.STYTCH_SECRET || 'test-secret';
 const STYTCH_B2B_PROJECT_ID = process.env.STYTCH_B2B_PROJECT_ID || STYTCH_PROJECT_ID;
 const STYTCH_B2B_SECRET = process.env.STYTCH_B2B_SECRET || STYTCH_SECRET;
+const STYTCH_B2B_ORGANIZATION_ID = process.env.STYTCH_B2B_ORGANIZATION_ID || '';
 const STYTCH_ENV = process.env.STYTCH_ENV === 'live' ? envs.live : envs.test;
 
 const b2bClient = new B2BClient({
@@ -20,9 +21,19 @@ const b2cClient = new Client({
 });
 
 export function usingPlaceholderStytchConfig(): boolean {
-  const b2cPlaceholder = STYTCH_PROJECT_ID === 'test-project' && STYTCH_SECRET === 'test-secret';
-  const b2bPlaceholder = STYTCH_B2B_PROJECT_ID === 'test-project' && STYTCH_B2B_SECRET === 'test-secret';
-  return b2cPlaceholder && b2bPlaceholder;
+  return usingPlaceholderB2CConfig() && usingPlaceholderB2BConfig();
+}
+
+export function usingPlaceholderB2CConfig(): boolean {
+  return STYTCH_PROJECT_ID === 'test-project' && STYTCH_SECRET === 'test-secret';
+}
+
+export function usingPlaceholderB2BConfig(): boolean {
+  return STYTCH_B2B_PROJECT_ID === 'test-project' && STYTCH_B2B_SECRET === 'test-secret';
+}
+
+export function getStytchB2BOrganizationId(): string | null {
+  return STYTCH_B2B_ORGANIZATION_ID || null;
 }
 
 function parseDevB2BToken(sessionJwt: string): {
@@ -125,7 +136,7 @@ export async function createDevB2BSessionJwt(merchantId?: string): Promise<{
   sessionJwt: string;
   merchantId: string;
 }> {
-  if (!usingPlaceholderStytchConfig()) {
+  if (!usingPlaceholderB2BConfig()) {
     throw new Error('stytch_dev_session_disabled_without_placeholder_config');
   }
 
@@ -152,7 +163,7 @@ export async function createDevB2CSessionJwt(customerId: string): Promise<{
   sessionJwt: string;
   customerId: string;
 }> {
-  if (!usingPlaceholderStytchConfig()) {
+  if (!usingPlaceholderB2CConfig()) {
     throw new Error('stytch_dev_session_disabled_without_placeholder_config');
   }
 
@@ -164,5 +175,124 @@ export async function createDevB2CSessionJwt(customerId: string): Promise<{
   return {
     sessionJwt: `b2c_dev_session::${resolvedCustomerId}`,
     customerId: resolvedCustomerId,
+  };
+}
+
+export async function resolveDashboardMerchantId(merchantId?: string): Promise<string> {
+  if (merchantId) {
+    const merchant = await prisma.merchant.findUnique({
+      where: { id: merchantId },
+      select: { id: true },
+    });
+    if (!merchant) {
+      throw new Error('merchant_not_found');
+    }
+    return merchant.id;
+  }
+
+  const merchant = await prisma.merchant.findFirst({
+    where: { isSandbox: true },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  });
+
+  if (!merchant) {
+    throw new Error('no_merchant_available_for_auth');
+  }
+
+  return merchant.id;
+}
+
+export async function sendB2BMagicLink(params: {
+  email: string;
+  redirectUrl: string;
+}): Promise<{
+  sent: true;
+  organizationId: string;
+}> {
+  const organizationId = getStytchB2BOrganizationId();
+  if (!organizationId) {
+    throw new Error('stytch_b2b_organization_missing');
+  }
+
+  await b2bClient.magicLinks.email.loginOrSignup({
+    organization_id: organizationId,
+    email_address: params.email,
+    login_redirect_url: params.redirectUrl,
+    signup_redirect_url: params.redirectUrl,
+  });
+
+  return {
+    sent: true,
+    organizationId,
+  };
+}
+
+export async function authenticateB2BMagicLink(params: {
+  magicLinksToken: string;
+  merchantId: string;
+  sessionDurationMinutes?: number;
+}): Promise<{
+  sessionJwt: string;
+  merchantId: string;
+  memberId: string;
+  organizationId: string;
+  fallback: false;
+}> {
+  const response = await b2bClient.magicLinks.authenticate({
+    magic_links_token: params.magicLinksToken,
+    session_duration_minutes: params.sessionDurationMinutes || 60,
+    session_custom_claims: {
+      merchant_id: params.merchantId,
+    },
+  });
+
+  return {
+    sessionJwt: response.session_jwt,
+    merchantId: params.merchantId,
+    memberId: response.member_id,
+    organizationId: response.organization_id,
+    fallback: false,
+  };
+}
+
+export async function sendB2CMagicLink(params: {
+  email: string;
+  redirectUrl: string;
+}): Promise<{
+  sent: true;
+}> {
+  await b2cClient.magicLinks.email.loginOrCreate({
+    email: params.email,
+    login_magic_link_url: params.redirectUrl,
+    signup_magic_link_url: params.redirectUrl,
+  });
+
+  return { sent: true };
+}
+
+export async function authenticateB2CMagicLink(params: {
+  token: string;
+  customerId: string;
+  sessionDurationMinutes?: number;
+}): Promise<{
+  sessionJwt: string;
+  customerId: string;
+  userId: string;
+  fallback: false;
+}> {
+  const response = await b2cClient.magicLinks.authenticate({
+    token: params.token,
+    session_duration_minutes: params.sessionDurationMinutes || 60,
+    session_custom_claims: {
+      customer_id: params.customerId,
+    },
+  });
+
+  return {
+    sessionJwt: response.session_jwt,
+    customerId: params.customerId,
+    userId: response.user_id,
+    fallback: false,
   };
 }

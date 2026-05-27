@@ -177,6 +177,22 @@ const SessionJwtRequestSchema = z.object({
   sessionJwt: z.string().min(1),
 });
 
+const B2BMagicLinkStartSchema = z.object({
+  email: z.string().email(),
+  merchantId: z.string().optional(),
+});
+
+const B2BMagicLinkStartResponseSchema = z.object({
+  mode: z.enum(['dev', 'stytch']),
+  sent: z.boolean(),
+  email: z.string().email().optional(),
+  merchantId: z.string(),
+  organizationId: z.string().optional(),
+  sessionJwt: z.string().optional(),
+  fallback: z.boolean().optional(),
+  warning: z.string().optional(),
+});
+
 const B2BAuthResponseSchema = z.object({
   merchantId: z.string(),
   memberId: z.string(),
@@ -207,6 +223,15 @@ const WidgetStateResponseSchema = z.object({
   state: z.string(),
   authorizeUrl: z.string().url(),
   expiresInSeconds: z.number().int().positive(),
+});
+
+const WidgetMagicLinkStartSchema = z.object({
+  email: z.string().email(),
+  state: z.string().min(1),
+});
+
+const WidgetMagicLinkStartResponseSchema = z.object({
+  sent: z.literal(true),
 });
 
 const document = createDocument({
@@ -618,6 +643,39 @@ const document = createDocument({
         },
       },
     },
+    '/api/v1/auth/b2b/magic-link/start': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Start dashboard B2B magic-link login',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: B2BMagicLinkStartSchema },
+          },
+        },
+        responses: {
+          '200': { description: 'Magic link sent or dev session returned', content: { 'application/json': { schema: B2BMagicLinkStartResponseSchema } } },
+          '400': { description: 'Validation error', content: { 'application/json': { schema: ErrorResponseSchema } } },
+          '500': { description: 'Stytch B2B configuration error', content: { 'application/json': { schema: ErrorResponseSchema } } },
+        },
+      },
+    },
+    '/api/v1/auth/b2b/magic-link/callback': {
+      get: {
+        tags: ['Auth'],
+        summary: 'Complete dashboard B2B magic-link login',
+        requestParams: {
+          query: z.object({
+            state: z.string().min(1),
+            token: z.string().min(1),
+          }),
+        },
+        responses: {
+          '302': { description: 'Redirects to dashboard authenticate route with session JWT in URL hash' },
+          '400': { description: 'Invalid state', content: { 'application/json': { schema: ErrorResponseSchema } } },
+        },
+      },
+    },
     '/api/v1/auth/b2c/authenticate': {
       post: {
         tags: ['Auth'],
@@ -676,6 +734,39 @@ const document = createDocument({
         },
         responses: {
           '200': { description: 'Popup HTML', content: { 'text/html': { schema: z.string() } } },
+          '400': { description: 'Invalid state', content: { 'text/html': { schema: z.string() } } },
+        },
+      },
+    },
+    '/api/v1/auth/b2c/widget/magic-link/start': {
+      post: {
+        tags: ['Auth'],
+        summary: 'Start checkout-widget B2C magic-link authorization',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': { schema: WidgetMagicLinkStartSchema },
+            'application/x-www-form-urlencoded': { schema: WidgetMagicLinkStartSchema },
+          },
+        },
+        responses: {
+          '200': { description: 'Check-email HTML or dev grant HTML', content: { 'text/html': { schema: z.string() }, 'application/json': { schema: WidgetMagicLinkStartResponseSchema } } },
+          '400': { description: 'Invalid state', content: { 'application/json': { schema: ErrorResponseSchema } } },
+        },
+      },
+    },
+    '/api/v1/auth/b2c/widget/magic-link/callback': {
+      get: {
+        tags: ['Auth'],
+        summary: 'Complete checkout-widget B2C magic-link authorization',
+        requestParams: {
+          query: z.object({
+            state: z.string().min(1),
+            token: z.string().min(1),
+          }),
+        },
+        responses: {
+          '200': { description: 'Popup grant HTML', content: { 'text/html': { schema: z.string() } } },
           '400': { description: 'Invalid state', content: { 'text/html': { schema: z.string() } } },
         },
       },

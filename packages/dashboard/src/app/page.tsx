@@ -100,6 +100,7 @@ type WebhookDelivery = {
 type Tab = "overview" | "tokens" | "rules" | "redemptions" | "webhooks" | "settings" | "demo" | "status";
 
 type ConnectionState = "connecting" | "live" | "down";
+type LoginStatus = "idle" | "sending" | "sent" | "error";
 
 const TAB_DEFS: { key: Tab; label: string; icon: string }[] = [
   { key: "overview", label: "Overview", icon: "📊" },
@@ -179,6 +180,9 @@ export default function Dashboard() {
   const [b2bSessionJwt, setB2BSessionJwtState] = useState<string | null>(() => getB2BSessionJwt());
   const [sessionInput, setSessionInput] = useState("");
   const [authWarning, setAuthWarning] = useState<string | null>(null);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginStatus, setLoginStatus] = useState<LoginStatus>("idle");
+  const [loginMessage, setLoginMessage] = useState<string | null>(null);
   const [serviceStatus, setServiceStatus] = useState<Record<string, "checking" | "up" | "down">>({});
   const [connection, setConnection] = useState<ConnectionState>("connecting");
   const [lastEventAt, setLastEventAt] = useState<string | null>(null);
@@ -262,6 +266,52 @@ export default function Dashboard() {
       console.error("Initial fetch failed", err);
     }
   }, []);
+
+  const currentMerchantId = merchant?.id;
+  const defaultLoginEmail = merchant?.email || "";
+
+  const sendB2BMagicLink = useCallback(async () => {
+    const email = loginEmail.trim() || defaultLoginEmail;
+    if (!email) {
+      setLoginStatus("error");
+      setLoginMessage("Enter a merchant email address.");
+      return;
+    }
+
+    setLoginStatus("sending");
+    setLoginMessage(null);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/auth/b2b/magic-link/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          merchantId: currentMerchantId,
+        }),
+      });
+      const body = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(body?.error?.message || "Magic link request failed.");
+      }
+
+      if (typeof body?.sessionJwt === "string") {
+        updateSessionJwt(body.sessionJwt);
+        setLoginStatus("sent");
+        setLoginMessage("Dev session loaded locally. Dashboard requests now use the B2B bearer path.");
+        setAuthWarning(body.warning || null);
+        await refreshAll();
+        return;
+      }
+
+      setLoginStatus("sent");
+      setLoginMessage(`Magic link sent to ${email}. Open it in this browser to finish sign in.`);
+    } catch (err) {
+      setLoginStatus("error");
+      setLoginMessage((err as Error).message);
+    }
+  }, [currentMerchantId, defaultLoginEmail, loginEmail, refreshAll, updateSessionJwt]);
 
   // Initial fetch
   useEffect(() => {
@@ -475,6 +525,12 @@ export default function Dashboard() {
               onToggle={() => setApiKeyVisible(!apiKeyVisible)}
               merchant={merchant}
               b2bSessionJwt={b2bSessionJwt}
+              loginEmail={loginEmail}
+              loginStatus={loginStatus}
+              loginMessage={loginMessage}
+              defaultLoginEmail={defaultLoginEmail}
+              setLoginEmail={setLoginEmail}
+              onMagicLinkSend={sendB2BMagicLink}
               sessionInput={sessionInput}
               setSessionInput={setSessionInput}
               authWarning={authWarning}
@@ -1020,6 +1076,12 @@ function SettingsTab({
   onToggle,
   merchant,
   b2bSessionJwt,
+  loginEmail,
+  loginStatus,
+  loginMessage,
+  defaultLoginEmail,
+  setLoginEmail,
+  onMagicLinkSend,
   sessionInput,
   setSessionInput,
   authWarning,
@@ -1032,6 +1094,12 @@ function SettingsTab({
   onToggle: () => void;
   merchant: Merchant;
   b2bSessionJwt: string | null;
+  loginEmail: string;
+  loginStatus: LoginStatus;
+  loginMessage: string | null;
+  defaultLoginEmail: string;
+  setLoginEmail: (value: string) => void;
+  onMagicLinkSend: () => void;
   sessionInput: string;
   setSessionInput: (value: string) => void;
   authWarning: string | null;
@@ -1083,10 +1151,9 @@ function SettingsTab({
   return (
     <div className="space-y-6 stagger-children max-w-2xl">
       <div className="glass rounded-xl p-5">
-        <h3 className="font-semibold mb-4">Stytch B2B Session</h3>
+        <h3 className="font-semibold mb-4">Stytch B2B Login</h3>
         <p className="text-xs text-text-muted mb-3">
-          Dashboard calls use <code className="bg-surface-3 px-1 rounded">Authorization: Bearer &lt;session_jwt&gt;</code>.
-          API keys remain supported for server-to-server calls.
+          Dashboard calls use <code className="bg-surface-3 px-1 rounded">Authorization: Bearer &lt;session_jwt&gt;</code>. API keys remain supported for server-to-server calls.
         </p>
         <div className="space-y-3">
           <div className="text-xs">
@@ -1094,6 +1161,31 @@ function SettingsTab({
             <span className={b2bSessionJwt ? "text-success" : "text-warning"}>
               {b2bSessionJwt ? "Session active" : "No session loaded"}
             </span>
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={loginEmail}
+              onChange={(e) => setLoginEmail(e.target.value)}
+              type="email"
+              placeholder={defaultLoginEmail || "merchant@example.com"}
+              className="flex-1 bg-surface-3 border border-border rounded-lg px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={onMagicLinkSend}
+              disabled={loginStatus === "sending"}
+              className="px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-xs font-medium transition-colors"
+            >
+              {loginStatus === "sending" ? "Sending..." : "Send magic link"}
+            </button>
+          </div>
+          {loginMessage && (
+            <p className={`text-xs ${loginStatus === "error" ? "text-error" : "text-success"}`}>
+              {loginMessage}
+            </p>
+          )}
+          <div className="border-t border-border pt-3">
+            <p className="text-xs text-text-muted mb-2">Advanced fallback: paste a Stytch B2B session JWT manually.</p>
           </div>
           <textarea
             value={sessionInput}

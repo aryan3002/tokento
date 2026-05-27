@@ -2430,6 +2430,10 @@ paths:
                   type: array
                   items:
                     type: string
+                    enum:
+                      - token.minted
+                      - token.redeemed
+                      - token.expired
               required:
                 - url
                 - events
@@ -2771,6 +2775,168 @@ paths:
                   - error
                   - requestId
                 additionalProperties: false
+  /api/v1/auth/b2b/magic-link/start:
+    post:
+      tags:
+        - Auth
+      summary: Start dashboard B2B magic-link login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  pattern: ^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+                merchantId:
+                  type: string
+              required:
+                - email
+      responses:
+        "200":
+          description: Magic link sent or dev session returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                      - dev
+                      - stytch
+                  sent:
+                    type: boolean
+                  email:
+                    type: string
+                    format: email
+                    pattern: ^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+                  merchantId:
+                    type: string
+                  organizationId:
+                    type: string
+                  sessionJwt:
+                    type: string
+                  fallback:
+                    type: boolean
+                  warning:
+                    type: string
+                required:
+                  - mode
+                  - sent
+                  - merchantId
+                additionalProperties: false
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties: {}
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                  requestId:
+                    type: string
+                required:
+                  - error
+                  - requestId
+                additionalProperties: false
+        "500":
+          description: Stytch B2B configuration error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties: {}
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                  requestId:
+                    type: string
+                required:
+                  - error
+                  - requestId
+                additionalProperties: false
+  /api/v1/auth/b2b/magic-link/callback:
+    get:
+      tags:
+        - Auth
+      summary: Complete dashboard B2B magic-link login
+      parameters:
+        - in: query
+          name: state
+          schema:
+            type: string
+            minLength: 1
+          required: true
+        - in: query
+          name: token
+          schema:
+            type: string
+            minLength: 1
+          required: true
+      responses:
+        "302":
+          description: Redirects to dashboard authenticate route with session JWT in URL hash
+        "400":
+          description: Invalid state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties: {}
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                  requestId:
+                    type: string
+                required:
+                  - error
+                  - requestId
+                additionalProperties: false
   /api/v1/auth/b2c/authenticate:
     post:
       tags:
@@ -2994,6 +3160,119 @@ paths:
       responses:
         "200":
           description: Popup HTML
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Invalid state
+          content:
+            text/html:
+              schema:
+                type: string
+  /api/v1/auth/b2c/widget/magic-link/start:
+    post:
+      tags:
+        - Auth
+      summary: Start checkout-widget B2C magic-link authorization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  pattern: ^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+                state:
+                  type: string
+                  minLength: 1
+              required:
+                - email
+                - state
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  pattern: ^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+                state:
+                  type: string
+                  minLength: 1
+              required:
+                - email
+                - state
+      responses:
+        "200":
+          description: Check-email HTML or dev grant HTML
+          content:
+            text/html:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sent:
+                    type: boolean
+                    const: true
+                required:
+                  - sent
+                additionalProperties: false
+        "400":
+          description: Invalid state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                      details:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties: {}
+                    required:
+                      - code
+                      - message
+                    additionalProperties: false
+                  requestId:
+                    type: string
+                required:
+                  - error
+                  - requestId
+                additionalProperties: false
+  /api/v1/auth/b2c/widget/magic-link/callback:
+    get:
+      tags:
+        - Auth
+      summary: Complete checkout-widget B2C magic-link authorization
+      parameters:
+        - in: query
+          name: state
+          schema:
+            type: string
+            minLength: 1
+          required: true
+        - in: query
+          name: token
+          schema:
+            type: string
+            minLength: 1
+          required: true
+      responses:
+        "200":
+          description: Popup grant HTML
           content:
             text/html:
               schema:
