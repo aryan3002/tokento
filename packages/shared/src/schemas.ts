@@ -84,9 +84,15 @@ export const UpdateEarnRuleSchema = CreateEarnRuleSchema.partial().extend({
 
 // ---- Create Webhook Endpoint ----
 
+export const WebhookEventTypeSchema = z.enum([
+  'token.minted',
+  'token.redeemed',
+  'token.expired',
+]);
+
 export const CreateWebhookEndpointSchema = z.object({
   url: z.string().url(),
-  events: z.array(z.string()).min(1),
+  events: z.array(WebhookEventTypeSchema).min(1),
 });
 
 // ---- API Key Creation ----

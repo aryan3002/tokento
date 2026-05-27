@@ -109,6 +109,20 @@ const WebhookEndpointSchema = z.object({
   updatedAt: DateTimeString,
 });
 
+const WebhookDeliveryReadSchema = z.object({
+  id: UUIDString,
+  webhookEndpointId: UUIDString,
+  endpointUrl: z.string().url(),
+  eventType: z.string(),
+  responseCode: z.number().nullable(),
+  responseBody: z.string().nullable(),
+  attempts: z.number().int(),
+  retryCount: z.number().int(),
+  nextRetryAt: DateTimeString.nullable(),
+  deliveredAt: DateTimeString.nullable(),
+  createdAt: DateTimeString,
+});
+
 const MintTokenResponseSchema = z.object({
   token: TokenSchema,
   walletCreated: z.boolean(),
@@ -568,6 +582,23 @@ const document = createDocument({
           '204': { description: 'Webhook endpoint deleted' },
           '401': { description: 'Auth error', content: { 'application/json': { schema: ErrorResponseSchema } } },
           '404': { description: 'Endpoint not found', content: { 'application/json': { schema: ErrorResponseSchema } } },
+        },
+      },
+    },
+    '/api/v1/merchants/me/webhooks/deliveries': {
+      get: {
+        tags: ['Webhooks'],
+        summary: 'List webhook delivery attempts',
+        security: [{ apiKeyAuth: [] }, { bearerAuth: [] }],
+        requestParams: {
+          query: z.object({
+            endpointId: UUIDString.optional(),
+            limit: z.coerce.number().int().positive().max(100).default(20),
+          }),
+        },
+        responses: {
+          '200': { description: 'Webhook deliveries', content: { 'application/json': { schema: z.array(WebhookDeliveryReadSchema) } } },
+          '401': { description: 'Auth error', content: { 'application/json': { schema: ErrorResponseSchema } } },
         },
       },
     },

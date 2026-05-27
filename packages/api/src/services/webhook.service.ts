@@ -28,8 +28,9 @@ export class WebhookService {
 
   async createEndpoint(merchantId: string, data: { url: string; events: string[] }) {
     const secret = generateWebhookSecret();
+    const dedupedEvents = Array.from(new Set(data.events));
     return prisma.webhookEndpoint.create({
-      data: { merchantId, url: data.url, secret, events: data.events },
+      data: { merchantId, url: data.url, secret, events: dedupedEvents },
     });
   }
 
@@ -41,6 +42,40 @@ export class WebhookService {
     const endpoint = await prisma.webhookEndpoint.findUnique({ where: { id: endpointId } });
     if (!endpoint || endpoint.merchantId !== merchantId) throw new AppError(404, 'webhook_not_found', 'Webhook endpoint not found.');
     await prisma.webhookEndpoint.delete({ where: { id: endpointId } });
+  }
+
+  async listDeliveries(merchantId: string, options?: { endpointId?: string; limit?: number }) {
+    const take = Math.max(1, Math.min(options?.limit ?? 20, 100));
+    const deliveries = await prisma.webhookDelivery.findMany({
+      where: {
+        webhookEndpoint: { merchantId },
+        ...(options?.endpointId ? { webhookEndpointId: options.endpointId } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+      include: {
+        webhookEndpoint: {
+          select: {
+            id: true,
+            url: true,
+          },
+        },
+      },
+    });
+
+    return deliveries.map((delivery) => ({
+      id: delivery.id,
+      webhookEndpointId: delivery.webhookEndpointId,
+      endpointUrl: delivery.webhookEndpoint.url,
+      eventType: delivery.eventType,
+      responseCode: delivery.responseCode,
+      responseBody: delivery.responseBody,
+      attempts: delivery.attempts,
+      retryCount: Math.max(0, delivery.attempts - 1),
+      nextRetryAt: delivery.nextRetryAt,
+      deliveredAt: delivery.deliveredAt,
+      createdAt: delivery.createdAt,
+    }));
   }
 
   private async dispatchEvent(eventType: string, payload: Record<string, unknown>) {
@@ -79,11 +114,13 @@ export class WebhookService {
       });
 
       clearTimeout(timeout);
+      const responseBody = await response.text().catch(() => null);
 
       await prisma.webhookDelivery.update({
         where: { id: delivery.id },
         data: {
           responseCode: response.status,
+          responseBody: responseBody ? responseBody.slice(0, 2000) : null,
           deliveredAt: response.ok ? new Date() : null,
           nextRetryAt: response.ok ? null : this.getNextRetryTime(1),
         },
@@ -95,7 +132,10 @@ export class WebhookService {
     } catch (err) {
       await prisma.webhookDelivery.update({
         where: { id: delivery.id },
-        data: { nextRetryAt: this.getNextRetryTime(1) },
+        data: {
+          responseBody: err instanceof Error ? err.message : 'webhook_delivery_error',
+          nextRetryAt: this.getNextRetryTime(1),
+        },
       });
       logger.error({ err, endpointId, url }, 'Webhook delivery error');
     }
