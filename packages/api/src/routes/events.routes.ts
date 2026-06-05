@@ -17,6 +17,7 @@ import { hashApiKey } from '../utils/ids';
 import { eventBus } from '../events/emitter';
 import { EventType } from '@tokento/shared';
 import { logger } from '../utils/logger';
+import { authenticateB2BSessionJwt } from '../services/stytch.service';
 
 const router = Router();
 
@@ -34,19 +35,31 @@ const HEARTBEAT_MS = 15_000;
 
 router.get('/stream', async (req: Request, res: Response) => {
   const rawKey = (req.query.apiKey as string) || (req.headers['x-api-key'] as string);
+  const sessionJwt = req.query.sessionJwt as string | undefined;
 
-  if (!rawKey) {
+  if (!rawKey && !sessionJwt) {
     res.status(401).json({ error: { code: 'missing_api_key', message: 'API key required as ?apiKey= or X-API-Key header.' } });
     return;
   }
 
-  const apiKey = await prisma.apiKey.findUnique({ where: { keyHash: hashApiKey(rawKey) } });
-  if (!apiKey || !apiKey.isActive) {
-    res.status(401).json({ error: { code: 'invalid_api_key', message: 'Invalid or deactivated API key.' } });
-    return;
+  let merchantId: string;
+  if (sessionJwt) {
+    try {
+      const auth = await authenticateB2BSessionJwt(sessionJwt);
+      merchantId = auth.merchantId;
+    } catch (err) {
+      logger.warn({ err }, 'Invalid B2B session for SSE stream');
+      res.status(401).json({ error: { code: 'invalid_b2b_session', message: 'Invalid B2B session JWT.' } });
+      return;
+    }
+  } else {
+    const apiKey = await prisma.apiKey.findUnique({ where: { keyHash: hashApiKey(rawKey!) } });
+    if (!apiKey || !apiKey.isActive) {
+      res.status(401).json({ error: { code: 'invalid_api_key', message: 'Invalid or deactivated API key.' } });
+      return;
+    }
+    merchantId = apiKey.merchantId;
   }
-
-  const merchantId = apiKey.merchantId;
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');

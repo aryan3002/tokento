@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [codex/**]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20.x]
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tokento
+          POSTGRES_PASSWORD: tokento_dev
+          POSTGRES_DB: tokento_dev
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U tokento -d tokento_dev"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://tokento:tokento_dev@localhost:5433/tokento_dev?schema=public
+      REDIS_URL: redis://localhost:6379
+      STYTCH_PROJECT_ID: test-project
+      STYTCH_SECRET: test-secret
+      STYTCH_ENV: test
+      HMAC_MASTER_KEY: ci-hmac-master-key
+      SANDBOX_MODE: true
+      DEV_FIXED_API_KEY: tk_dev_local_sandbox_key_do_not_use_in_production_0000000000000000
+      NEXT_PUBLIC_TOKENTO_API_KEY: tk_dev_local_sandbox_key_do_not_use_in_production_0000000000000000
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prisma generate
+        run: pnpm db:generate
+
+      - name: Prisma schema push
+        run: pnpm db:push
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm --filter api test

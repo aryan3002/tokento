@@ -8,7 +8,8 @@
 import prisma from '../db/client';
 import redis from '../db/redis';
 import { logger } from '../utils/logger';
-import { CACHE_TTL, TokenStatus, WalletQueryParams, WalletQueryResponse } from '@tokento/shared';
+import { Prisma } from '@prisma/client';
+import { CACHE_TTL, TokenType, TokenStatus, WalletQueryParams, WalletQueryResponse } from '@tokento/shared';
 
 export class WalletService {
   /**
@@ -31,12 +32,12 @@ export class WalletService {
         logger.debug({ customerId, cacheKey }, 'Wallet query — cache hit');
         return JSON.parse(cached);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       logger.warn({ err }, 'Redis cache read failed — querying DB');
     }
 
     // Build Prisma query
-    const where: Record<string, unknown> = {
+    const where: Prisma.TokenWhereInput = {
       customerId,
       status: TokenStatus.ACTIVE,
       expiryAt: { gt: new Date() },       // Not expired
@@ -60,7 +61,7 @@ export class WalletService {
 
     if (params.channel) {
       where.OR = [
-        ...(Array.isArray(where.OR) ? where.OR as unknown[] : []),
+        ...(Array.isArray(where.OR) ? where.OR : []),
         { channelRestriction: null },
         { channelRestriction: params.channel },
       ];
@@ -75,25 +76,25 @@ export class WalletService {
     }
 
     const tokens = await prisma.token.findMany({
-      where: where as Parameters<typeof prisma.token.findMany>[0]['where'],
+      where,
       orderBy: [
         { denomination: 'desc' },
         { expiryAt: 'asc' },
       ],
     });
 
-    const totalValue = tokens.reduce((sum, t) => sum + t.denomination, 0);
+    const totalValue = tokens.reduce((sum: number, t) => sum + t.denomination, 0);
 
     const response: WalletQueryResponse = {
       customerId,
-      tokens: tokens.map((t) => ({
+      tokens: tokens.map((t): WalletQueryResponse['tokens'][number] => ({
         id: t.id,
         merchantId: t.merchantId,
         customerId: t.customerId,
         earnRuleId: t.earnRuleId,
         denomination: t.denomination,
-        tokenType: t.tokenType as any,
-        status: t.status as any,
+        tokenType: t.tokenType as TokenType,
+        status: t.status as TokenStatus,
         signature: t.signature,
         idempotencyKey: t.idempotencyKey,
         categoryRestriction: t.categoryRestriction,
@@ -114,7 +115,7 @@ export class WalletService {
     // Cache the response
     try {
       await redis.setex(cacheKey, CACHE_TTL.WALLET_QUERY, JSON.stringify(response));
-    } catch (err) {
+    } catch (err: unknown) {
       logger.warn({ err }, 'Redis cache write failed');
     }
 

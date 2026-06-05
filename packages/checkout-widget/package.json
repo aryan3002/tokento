@@ -4,11 +4,13 @@
   "private": true,
   "main": "./dist/tokento-widget.js",
   "scripts": {
-    "build": "tsc && node scripts/bundle.js",
+    "build": "pnpm run typecheck && node scripts/bundle.js",
+    "bundle": "node scripts/bundle.js",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
+    "esbuild": "^0.25.12",
     "typescript": "^5.7.0"
   }
 }

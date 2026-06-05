@@ -8,6 +8,15 @@ import crypto from 'crypto';
 
 const MASTER_KEY = process.env.HMAC_MASTER_KEY || 'dev-hmac-master-key-change-me';
 
+export interface TokenSignatureParams {
+  tokenId: string;
+  merchantId: string;
+  customerId: string;
+  denomination: number;
+  expiryAt: string;
+  isSandbox: boolean;
+}
+
 /**
  * Derive a merchant-scoped HMAC key from the master key.
  */
@@ -19,19 +28,11 @@ function deriveMerchantKey(merchantId: string): Buffer {
 }
 
 /**
- * Create an HMAC-SHA256 signature for a token.
- * Signs: tokenId + merchantId + customerId + denomination + expiryAt + isSandbox
+ * Canonical payload used for token signature generation and verification.
+ * Keeping this in one place prevents signing/verification drift.
  */
-export function signToken(params: {
-  tokenId: string;
-  merchantId: string;
-  customerId: string;
-  denomination: number;
-  expiryAt: string;
-  isSandbox: boolean;
-}): string {
-  const key = deriveMerchantKey(params.merchantId);
-  const payload = [
+export function buildTokenSignaturePayload(params: TokenSignatureParams): string {
+  return [
     params.tokenId,
     params.merchantId,
     params.customerId,
@@ -39,6 +40,15 @@ export function signToken(params: {
     params.expiryAt,
     params.isSandbox ? 'sandbox' : 'production',
   ].join(':');
+}
+
+/**
+ * Create an HMAC-SHA256 signature for a token.
+ * Signs: tokenId + merchantId + customerId + denomination + expiryAt + isSandbox
+ */
+export function signToken(params: TokenSignatureParams): string {
+  const key = deriveMerchantKey(params.merchantId);
+  const payload = buildTokenSignaturePayload(params);
 
   return crypto.createHmac('sha256', key).update(payload).digest('hex');
 }
@@ -47,13 +57,7 @@ export function signToken(params: {
  * Verify the HMAC signature of a token.
  * Returns true if the signature matches.
  */
-export function verifyTokenSignature(params: {
-  tokenId: string;
-  merchantId: string;
-  customerId: string;
-  denomination: number;
-  expiryAt: string;
-  isSandbox: boolean;
+export function verifyTokenSignature(params: TokenSignatureParams & {
   signature: string;
 }): boolean {
   const expectedSignature = signToken({
