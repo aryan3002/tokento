@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   prismaMock: {
@@ -49,5 +49,73 @@ describe('stytch service dev fallback', () => {
     const session = await createDevB2CSessionJwt('customer-789');
     expect(session.customerId).toBe('customer-789');
     expect(session.sessionJwt).toBe('b2c_dev_session::customer-789');
+  });
+});
+
+describe('dev session tokens are refused outside local development', () => {
+  const OLD_ENV = process.env;
+
+  beforeEach(() => {
+    vi.resetModules();
+    process.env = { ...OLD_ENV };
+  });
+
+  afterEach(() => {
+    process.env = OLD_ENV;
+  });
+
+  it('rejects a B2C dev token when NODE_ENV=production', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.STYTCH_PROJECT_ID = 'test-project';
+    process.env.STYTCH_SECRET = 'test-secret';
+    const svc = await import('../src/services/stytch.service');
+
+    await expect(
+      svc.authenticateB2CSessionJwt('b2c_dev_session::11111111-1111-1111-1111-111111111111'),
+    ).rejects.toThrow(/dev_session_forbidden/);
+  });
+
+  it('rejects a B2C dev token when real Stytch credentials are configured', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.STYTCH_PROJECT_ID = 'project-live-real';
+    process.env.STYTCH_SECRET = 'secret-live-real';
+    const svc = await import('../src/services/stytch.service');
+
+    await expect(
+      svc.authenticateB2CSessionJwt('b2c_dev_session::11111111-1111-1111-1111-111111111111'),
+    ).rejects.toThrow(/dev_session_forbidden/);
+  });
+
+  it('rejects a B2B dev token when NODE_ENV=production', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.STYTCH_PROJECT_ID = 'test-project';
+    process.env.STYTCH_SECRET = 'test-secret';
+    const svc = await import('../src/services/stytch.service');
+
+    await expect(
+      svc.authenticateB2BSessionJwt('b2b_dev_session::some-merchant-id'),
+    ).rejects.toThrow(/dev_session_forbidden/);
+  });
+
+  it('rejects a B2B dev token when real B2B credentials are configured', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.STYTCH_B2B_PROJECT_ID = 'project-live-real';
+    process.env.STYTCH_B2B_SECRET = 'secret-live-real';
+    const svc = await import('../src/services/stytch.service');
+
+    await expect(
+      svc.authenticateB2BSessionJwt('b2b_dev_session::some-merchant-id'),
+    ).rejects.toThrow(/dev_session_forbidden/);
+  });
+
+  it('still allows a B2C dev token in local development with placeholder config', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.STYTCH_PROJECT_ID = 'test-project';
+    process.env.STYTCH_SECRET = 'test-secret';
+    const svc = await import('../src/services/stytch.service');
+
+    const result = await svc.authenticateB2CSessionJwt('b2c_dev_session::cust-123');
+    expect(result.customerId).toBe('cust-123');
+    expect(result.fallback).toBe(true);
   });
 });

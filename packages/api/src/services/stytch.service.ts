@@ -36,6 +36,23 @@ export function getStytchB2BOrganizationId(): string | null {
   return STYTCH_B2B_ORGANIZATION_ID || null;
 }
 
+/**
+ * Dev session tokens (`b2c_dev_session::<id>` / `b2b_dev_session::<id>`) name their own
+ * principal, so accepting one is equivalent to accepting an unauthenticated request.
+ * They are permitted only when BOTH conditions hold: we are not in production, and the
+ * corresponding Stytch client is still on placeholder credentials.
+ */
+function assertDevSessionAllowed(kind: 'b2c' | 'b2b'): void {
+  const notProduction = process.env.NODE_ENV !== 'production';
+  const placeholderConfig = kind === 'b2c'
+    ? usingPlaceholderB2CConfig()
+    : usingPlaceholderB2BConfig();
+
+  if (!notProduction || !placeholderConfig) {
+    throw new Error(`dev_session_forbidden:${kind}`);
+  }
+}
+
 function parseDevB2BToken(sessionJwt: string): {
   merchantId: string;
   memberId: string;
@@ -78,6 +95,7 @@ export async function authenticateB2BSessionJwt(sessionJwt: string): Promise<{
 }> {
   const devSession = parseDevB2BToken(sessionJwt);
   if (devSession) {
+    assertDevSessionAllowed('b2b');
     return { ...devSession, fallback: true };
   }
 
@@ -109,6 +127,7 @@ export async function authenticateB2CSessionJwt(sessionJwt: string): Promise<{
 }> {
   const devSession = parseDevB2CToken(sessionJwt);
   if (devSession) {
+    assertDevSessionAllowed('b2c');
     return { ...devSession, fallback: true };
   }
 

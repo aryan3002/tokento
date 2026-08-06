@@ -27,6 +27,16 @@ import authRoutes from './routes/auth.routes';
 // Initialize webhook service (sets up event listeners)
 import './services/webhook.service';
 
+import { usingPlaceholderB2BConfig, usingPlaceholderB2CConfig } from './services/stytch.service';
+
+// Placeholder Stytch credentials enable the dev-session token path, which lets a caller
+// name its own principal. Refuse to boot rather than serve production traffic that way.
+if (process.env.NODE_ENV === 'production' && (usingPlaceholderB2CConfig() || usingPlaceholderB2BConfig())) {
+  throw new Error(
+    'Refusing to start: placeholder Stytch credentials in production. Set STYTCH_PROJECT_ID/STYTCH_SECRET and STYTCH_B2B_PROJECT_ID/STYTCH_B2B_SECRET.',
+  );
+}
+
 Sentry.init({
   dsn: process.env.SENTRY_DSN || undefined,
   environment: process.env.NODE_ENV || 'development',
