@@ -2,7 +2,6 @@
 // Tokento — Redemption Service
 // ============================================================
 import prisma from '../db/client';
-import redis from '../db/redis';
 import { logger } from '../utils/logger';
 import { emitEvent } from '../events/emitter';
 import { generateSettlementRef } from '../utils/ids';

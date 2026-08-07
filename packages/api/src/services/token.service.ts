@@ -5,7 +5,6 @@
 // P0: ≤200ms p99, idempotent, expired tokens auto-excluded
 
 import prisma from '../db/client';
-import redis from '../db/redis';
 import { v4 as uuidv4 } from 'uuid';
 import { signToken } from '../utils/crypto';
 import { moneyLessThan, toMoneyNumber } from '../utils/money';
