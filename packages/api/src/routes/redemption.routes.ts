@@ -6,6 +6,7 @@ import { redemptionService } from '../services/redemption.service';
 import { authenticateBearerToken, authenticateApiKey } from '../middleware/auth.middleware';
 import { rateLimit } from '../middleware/rate-limit.middleware';
 import { idempotency } from '../middleware/idempotency.middleware';
+import { requireSandboxContext } from '../middleware/sandbox.middleware';
 import { RedeemTokenSchema, PaginationSchema } from '@tokento/shared';
 
 const router = Router();
@@ -20,7 +21,7 @@ router.post('/:id/redeem',
       const data = RedeemTokenSchema.parse(req.body);
       const tokenId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       const result = await redemptionService.redeem(tokenId, data, {
-        isSandbox: req.isSandbox,
+        isSandbox: requireSandboxContext(req),
         authenticatedCustomerId: req.customerId!,
       });
       res.json(result);

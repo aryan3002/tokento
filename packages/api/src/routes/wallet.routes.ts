@@ -5,6 +5,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { walletService } from '../services/wallet.service';
 import { authenticateBearerToken } from '../middleware/auth.middleware';
 import { rateLimit } from '../middleware/rate-limit.middleware';
+import { requireSandboxContext } from '../middleware/sandbox.middleware';
 import { WalletQuerySchema } from '@tokento/shared';
 
 const router = Router();
@@ -25,7 +26,7 @@ router.get('/:customerId/tokens',
         return;
       }
       const params = WalletQuerySchema.parse(req.query);
-      const result = await walletService.queryTokens(customerId, params);
+      const result = await walletService.queryTokens(customerId, params, requireSandboxContext(req));
       res.json(result);
     } catch (err) { next(err); }
   }

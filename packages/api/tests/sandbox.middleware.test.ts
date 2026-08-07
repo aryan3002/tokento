@@ -1,26 +1,25 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { NextFunction, Request, Response } from 'express';
-import { sandboxIsolation } from '../src/middleware/sandbox.middleware';
+import { describe, expect, it } from 'vitest';
+import type { Request } from 'express';
+import { deploymentIsSandbox, requireSandboxContext } from '../src/middleware/sandbox.middleware';
 
-function runMiddleware(req: Partial<Request>): { req: Partial<Request>; next: ReturnType<typeof vi.fn> } {
-  const middleware = sandboxIsolation();
-  const next = vi.fn() as unknown as NextFunction;
-  middleware(req as Request, {} as Response, next);
-  return { req, next: next as unknown as ReturnType<typeof vi.fn> };
-}
-
-describe('sandbox isolation middleware', () => {
-  it('defaults to SANDBOX_MODE when req.isSandbox is unset', () => {
+describe('sandbox context', () => {
+  it('reads the deployment flag from SANDBOX_MODE', () => {
     process.env.SANDBOX_MODE = 'true';
-    const { req, next } = runMiddleware({});
-    expect(req.isSandbox).toBe(true);
-    expect(next).toHaveBeenCalledTimes(1);
+    expect(deploymentIsSandbox()).toBe(true);
+    process.env.SANDBOX_MODE = 'false';
+    expect(deploymentIsSandbox()).toBe(false);
   });
 
-  it('preserves existing sandbox value from prior auth middleware', () => {
-    process.env.SANDBOX_MODE = 'false';
-    const { req, next } = runMiddleware({ isSandbox: true });
-    expect(req.isSandbox).toBe(true);
-    expect(next).toHaveBeenCalledTimes(1);
+  it('returns the context established during authentication', () => {
+    expect(requireSandboxContext({ isSandbox: true } as Request)).toBe(true);
+    expect(requireSandboxContext({ isSandbox: false } as Request)).toBe(false);
+  });
+
+  it('throws rather than guessing when authentication established no context', () => {
+    // A missing value means the route was wired without auth. Defaulting here would
+    // let sandbox and production tokens mix on a money path.
+    expect(() => requireSandboxContext({} as Request)).toThrowError(
+      expect.objectContaining({ statusCode: 500, code: 'sandbox_unresolved' }),
+    );
   });
 });

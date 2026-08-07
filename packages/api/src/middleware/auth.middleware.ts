@@ -9,6 +9,7 @@ import { API_KEY } from '@tokento/shared';
 import { hashApiKey } from '../utils/ids';
 import prisma from '../db/client';
 import { logger } from '../utils/logger';
+import { deploymentIsSandbox } from './sandbox.middleware';
 import { authenticateB2BSessionJwt, authenticateB2CSessionJwt } from '../services/stytch.service';
 
 // Extend Express Request to carry auth context
@@ -149,6 +150,8 @@ export function authenticateBearerToken() {
       try {
         const auth = await authenticateB2CSessionJwt(sessionJwt);
         req.customerId = auth.customerId;
+        // Customer sessions carry no sandbox flag of their own; scope them to the deployment.
+        req.isSandbox = deploymentIsSandbox();
         req.stytchUserId = auth.userId;
         next();
       } catch (err) {

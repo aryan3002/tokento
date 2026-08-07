@@ -20,10 +20,10 @@ export class WalletService {
   async queryTokens(
     customerId: string,
     params: WalletQueryParams,
-    isSandbox?: boolean
+    isSandbox: boolean
   ): Promise<WalletQueryResponse> {
     // Build cache key from query params
-    const cacheKey = this.buildCacheKey(customerId, params);
+    const cacheKey = this.buildCacheKey(customerId, params, isSandbox);
 
     // Check cache first
     try {
@@ -44,9 +44,7 @@ export class WalletService {
       agentPresentableFlag: true,          // Only agent-presentable tokens
     };
 
-    if (isSandbox !== undefined) {
-      where.isSandbox = isSandbox;
-    }
+    where.isSandbox = isSandbox;
 
     if (params.merchantId) {
       where.merchantId = params.merchantId;
@@ -135,8 +133,14 @@ export class WalletService {
   /**
    * Build a cache key for wallet queries.
    */
-  private buildCacheKey(customerId: string, params: WalletQueryParams): string {
-    const parts = [`wallet:${customerId}`];
+  private buildCacheKey(customerId: string, params: WalletQueryParams, isSandbox: boolean): string {
+    // The environment segment keeps sandbox and production results in separate entries —
+    // without it a sandbox query serves its results to a production caller.
+    // The `q` segment guarantees every key matches the `wallet:{customerId}:*` pattern used
+    // for invalidation on mint and redeem, including the no-filter query. Previously an
+    // unfiltered query produced the bare key `wallet:{customerId}`, which that pattern does
+    // not match, so the most common query was never invalidated and served stale tokens.
+    const parts = [`wallet:${customerId}`, isSandbox ? 'sandbox' : 'production', 'q'];
     if (params.merchantId) parts.push(`m:${params.merchantId}`);
     if (params.category) parts.push(`cat:${params.category}`);
     if (params.channel) parts.push(`ch:${params.channel}`);

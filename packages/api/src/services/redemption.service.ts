@@ -11,7 +11,7 @@ import { EventType, TokenStatus, RedeemTokenRequest, RedeemTokenResponse } from 
 import { AppError } from '../middleware/error.middleware';
 
 export interface RedeemOptions {
-  isSandbox?: boolean;
+  isSandbox: boolean;
   /**
    * The customer established by authentication. Required — a redemption may only be
    * performed by the token's owner, and making this mandatory means the compiler

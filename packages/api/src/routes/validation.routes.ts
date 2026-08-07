@@ -5,6 +5,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { validationService } from '../services/validation.service';
 import { authenticateBearerToken } from '../middleware/auth.middleware';
 import { rateLimit } from '../middleware/rate-limit.middleware';
+import { requireSandboxContext } from '../middleware/sandbox.middleware';
 import { ValidateTokenSchema } from '@tokento/shared';
 
 const router = Router();
@@ -17,7 +18,7 @@ router.post('/:id/validate',
     try {
       const data = ValidateTokenSchema.parse(req.body);
       const tokenId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-      const result = await validationService.validate(tokenId, data);
+      const result = await validationService.validate(tokenId, data, requireSandboxContext(req));
       res.json(result);
     } catch (err) { next(err); }
   }

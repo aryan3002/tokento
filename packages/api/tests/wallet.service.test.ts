@@ -115,3 +115,37 @@ describe('wallet service', () => {
     await expect(walletService.walletExists('missing')).resolves.toBe(false);
   });
 });
+
+describe('wallet sandbox isolation is mandatory', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.redisMock.get.mockResolvedValue(null);
+    mocks.redisMock.setex.mockResolvedValue('OK');
+    mocks.prismaMock.wallet.findUnique.mockResolvedValue(null);
+    mocks.prismaMock.token.findMany.mockResolvedValue([]);
+  });
+
+  it('always constrains the query by isSandbox (production context)', async () => {
+    await walletService.queryTokens('customer-1', {}, false);
+    const where = mocks.prismaMock.token.findMany.mock.calls[0][0].where;
+    expect(where.isSandbox).toBe(false);
+  });
+
+  it('always constrains the query by isSandbox (sandbox context)', async () => {
+    await walletService.queryTokens('customer-1', {}, true);
+    const where = mocks.prismaMock.token.findMany.mock.calls[0][0].where;
+    expect(where.isSandbox).toBe(true);
+  });
+
+  it('scopes the cache key by sandbox context so the two never share an entry', async () => {
+    await walletService.queryTokens('customer-1', {}, true);
+    const sandboxKey = mocks.redisMock.get.mock.calls[0][0];
+    vi.clearAllMocks();
+    mocks.redisMock.get.mockResolvedValue(null);
+    mocks.redisMock.setex.mockResolvedValue('OK');
+    mocks.prismaMock.token.findMany.mockResolvedValue([]);
+    await walletService.queryTokens('customer-1', {}, false);
+    const prodKey = mocks.redisMock.get.mock.calls[0][0];
+    expect(sandboxKey).not.toBe(prodKey);
+  });
+});

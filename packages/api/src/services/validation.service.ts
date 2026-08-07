@@ -27,7 +27,7 @@ export class ValidationService {
   async validate(
     tokenId: string,
     data: ValidateTokenRequest,
-    isSandbox?: boolean
+    isSandbox: boolean
   ): Promise<ValidateTokenResponse> {
     const token = await prisma.token.findUnique({
       where: { id: tokenId },
@@ -44,7 +44,7 @@ export class ValidationService {
     }
 
     // Sandbox/production isolation check
-    if (isSandbox !== undefined && token.isSandbox !== isSandbox) {
+    if (token.isSandbox !== isSandbox) {
       return {
         valid: false,
         tokenId,
