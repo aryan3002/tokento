@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
   prismaMock: {
     token: { findMany: vi.fn(), updateMany: vi.fn() },
   },
-  redisMock: { set: vi.fn(), keys: vi.fn(async () => []), del: vi.fn(async () => 0) },
+  redisMock: { set: vi.fn(), keys: vi.fn(async () => []), del: vi.fn(async () => 0),
+    smembers: vi.fn(async () => [] as string[]), sadd: vi.fn(async () => 1), expire: vi.fn(async () => 1) },
   emitEventMock: vi.fn(),
   loggerMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -48,9 +49,16 @@ describe('expiry sweeper', () => {
   });
 
   it('invalidates the wallet cache so expired tokens vanish from queries', async () => {
-    mocks.redisMock.keys.mockResolvedValue(['wallet:c-1:sandbox:q']);
+    // Invalidation reads the per-customer index set rather than scanning the keyspace.
+    mocks.redisMock.smembers.mockResolvedValue(['wallet:c-1:sandbox:q']);
     await sweepExpiredTokens();
+    expect(mocks.redisMock.smembers).toHaveBeenCalledWith('wallet-index:c-1');
     expect(mocks.redisMock.del).toHaveBeenCalledWith('wallet:c-1:sandbox:q');
+  });
+
+  it('never uses a blocking KEYS scan for invalidation', async () => {
+    await sweepExpiredTokens();
+    expect(mocks.redisMock.keys).not.toHaveBeenCalled();
   });
 
   it('skips the tick when another instance holds the lock', async () => {

@@ -9,6 +9,7 @@ import prisma from '../db/client';
 import redis from '../db/redis';
 import { logger } from '../utils/logger';
 import { sumMoney, toMoneyNumber } from '../utils/money';
+import { trackWalletCacheKey } from '../utils/wallet-cache';
 import { Prisma } from '@prisma/client';
 import { CACHE_TTL, TokenType, TokenStatus, WalletQueryParams, WalletQueryResponse } from '@tokento/shared';
 
@@ -114,6 +115,7 @@ export class WalletService {
     // Cache the response
     try {
       await redis.setex(cacheKey, CACHE_TTL.WALLET_QUERY, JSON.stringify(response));
+      await trackWalletCacheKey(customerId, cacheKey, CACHE_TTL.WALLET_QUERY);
     } catch (err: unknown) {
       logger.warn({ err }, 'Redis cache write failed');
     }

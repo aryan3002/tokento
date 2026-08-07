@@ -10,6 +10,7 @@ import { validationService } from './validation.service';
 import { EventType, TokenStatus, RedeemTokenRequest, RedeemTokenResponse } from '@tokento/shared';
 import { AppError } from '../middleware/error.middleware';
 import { subtractMoneyFloorZero, toMoneyNumber } from '../utils/money';
+import { invalidateWalletCache } from '../utils/wallet-cache';
 import { SettlementStatus } from '@tokento/shared';
 
 /**
@@ -93,8 +94,7 @@ export class RedemptionService {
     });
 
     // Invalidate cache
-    const keys = await redis.keys(`wallet:${token.customerId}:*`).catch(() => [] as string[]);
-    if (keys.length > 0) await redis.del(...keys).catch(() => {});
+    await invalidateWalletCache(token.customerId);
 
     emitEvent(EventType.TOKEN_REDEEMED, {
       tokenId, redemptionId: redemption.id, merchantId: data.merchantId,

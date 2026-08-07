@@ -115,7 +115,7 @@ const TAB_DEFS: { key: Tab; label: string; icon: string }[] = [
 const SERVICES = [
   { name: "API Server", url: `${API_BASE}/health`, port: 4000 },
   { name: "MCP Adapter", url: "http://localhost:8787", port: 8787 },
-  { name: "PostgreSQL", url: null, port: 5433 },
+  { name: "PostgreSQL", url: null, port: 5434 },
   { name: "Redis", url: null, port: 6379 },
 ];
 
@@ -1289,7 +1289,7 @@ function DemoTab({ merchant }: { merchant: Merchant | null }) {
         <h3 className="font-semibold mb-2">1 — Confirm the API + MCP are running</h3>
         <p className="text-sm text-text-secondary mb-3">
           API: <code className="bg-surface-3 px-1 rounded">http://localhost:4000/health</code> · MCP Worker:{" "}
-          <code className="bg-surface-3 px-1 rounded">http://localhost:8787</code> · Postgres :5433 · Redis :6379
+          <code className="bg-surface-3 px-1 rounded">http://localhost:8787</code> · Postgres :5434 · Redis :6379
         </p>
         <div className="flex flex-wrap items-center gap-2 mb-3">
           <a

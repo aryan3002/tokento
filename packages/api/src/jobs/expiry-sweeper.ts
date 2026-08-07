@@ -13,6 +13,7 @@ import { logger } from '../utils/logger';
 import { emitEvent } from '../events/emitter';
 import { EventType, TokenStatus } from '@tokento/shared';
 import { toMoneyNumber } from '../utils/money';
+import { invalidateWalletCache } from '../utils/wallet-cache';
 
 const SWEEP_LOCK_KEY = 'jobs:expiry-sweeper:lock';
 const BATCH_SIZE = 500;
@@ -77,8 +78,7 @@ export async function sweepExpiredTokens(lockTtlSeconds = 50): Promise<SweepResu
     // Expired tokens must disappear from wallet queries immediately.
     const customerIds = [...new Set(due.map((t) => t.customerId))];
     for (const customerId of customerIds) {
-      const keys = await redis.keys(`wallet:${customerId}:*`).catch(() => [] as string[]);
-      if (keys.length > 0) await redis.del(...keys).catch(() => {});
+      await invalidateWalletCache(customerId);
     }
 
     logger.info({ count }, 'Expiry sweeper: tokens expired');

@@ -9,6 +9,7 @@ import redis from '../db/redis';
 import { v4 as uuidv4 } from 'uuid';
 import { signToken } from '../utils/crypto';
 import { moneyLessThan, toMoneyNumber } from '../utils/money';
+import { invalidateWalletCache } from '../utils/wallet-cache';
 import { logger } from '../utils/logger';
 import { emitEvent } from '../events/emitter';
 import { Token as PrismaToken } from '@prisma/client';
@@ -165,11 +166,7 @@ export class TokenService {
    */
   private async invalidateWalletCache(customerId: string): Promise<void> {
     try {
-      const pattern = `wallet:${customerId}:*`;
-      const keys = await redis.keys(pattern);
-      if (keys.length > 0) {
-        await redis.del(...keys);
-      }
+      await invalidateWalletCache(customerId);
     } catch (err: unknown) {
       logger.warn({ err, customerId }, 'Failed to invalidate wallet cache');
     }
