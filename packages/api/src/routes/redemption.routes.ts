@@ -19,7 +19,10 @@ router.post('/:id/redeem',
     try {
       const data = RedeemTokenSchema.parse(req.body);
       const tokenId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-      const result = await redemptionService.redeem(tokenId, data);
+      const result = await redemptionService.redeem(tokenId, data, {
+        isSandbox: req.isSandbox,
+        authenticatedCustomerId: req.customerId!,
+      });
       res.json(result);
     } catch (err) { next(err); }
   }

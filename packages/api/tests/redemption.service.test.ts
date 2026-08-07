@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => {
     token: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     $transaction: vi.fn(),
   };
@@ -67,10 +68,11 @@ describe('redemption service', () => {
       id: 'redemption-1',
       netValue: 25,
     });
-    mocks.prismaMock.$transaction.mockResolvedValue([
-      { id: 'token-1', status: TokenStatus.REDEEMED },
-      { id: 'redemption-1', netValue: 25 },
-    ]);
+    mocks.prismaMock.token.updateMany.mockResolvedValue({ count: 1 });
+    // Interactive transaction: invoke the callback with the same mock as `tx`.
+    mocks.prismaMock.$transaction.mockImplementation(
+      async (fn: (tx: typeof mocks.prismaMock) => Promise<unknown>) => fn(mocks.prismaMock),
+    );
     mocks.validationMock.mockResolvedValue({
       valid: true,
       reasonCode: null,
@@ -91,7 +93,7 @@ describe('redemption service', () => {
       transactionAmount: 30,
       merchantId: 'merchant-1',
       idempotencyKey: 'idem-1',
-    }, true);
+    }, { isSandbox: true, authenticatedCustomerId: 'customer-1' });
 
     expect(result.alreadyRedeemed).toBe(true);
     expect(result.redemptionId).toBe('existing-redemption');
@@ -105,7 +107,7 @@ describe('redemption service', () => {
       merchantId: 'merchant-1',
       idempotencyKey: 'idem-2',
       agentId: 'agent-1',
-    }, true);
+    }, { isSandbox: true, authenticatedCustomerId: 'customer-1' });
 
     expect(mocks.validationMock).toHaveBeenCalledTimes(1);
     expect(mocks.prismaMock.$transaction).toHaveBeenCalledTimes(1);
@@ -126,9 +128,82 @@ describe('redemption service', () => {
       transactionAmount: 30,
       merchantId: 'merchant-1',
       idempotencyKey: 'idem-3',
-    }, true)).rejects.toMatchObject<AppError>({
+    }, { isSandbox: true, authenticatedCustomerId: 'customer-1' })).rejects.toMatchObject<AppError>({
       code: 'validation_failed',
       statusCode: 400,
+    });
+  });
+});
+
+describe('redemption ownership enforcement', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    mocks.prismaMock.redemption.findUnique.mockResolvedValue(null);
+    mocks.prismaMock.token.findUnique.mockResolvedValue({
+      id: 'token-1',
+      customerId: 'owner-1',
+      denomination: 5,
+      status: TokenStatus.ACTIVE,
+    });
+    mocks.prismaMock.redemption.create.mockResolvedValue({ id: 'redemption-1', netValue: 25 });
+    mocks.prismaMock.token.updateMany.mockResolvedValue({ count: 1 });
+    mocks.prismaMock.$transaction.mockImplementation(
+      async (fn: (tx: typeof mocks.prismaMock) => Promise<unknown>) => fn(mocks.prismaMock),
+    );
+    mocks.validationMock.mockResolvedValue({ valid: true, reasonCode: null, reasonMessage: null });
+  });
+
+  it('refuses to redeem a token belonging to another customer', async () => {
+    await expect(redemptionService.redeem('token-1', {
+      transactionAmount: 20,
+      merchantId: 'merchant-1',
+      idempotencyKey: 'attack-1',
+    }, { authenticatedCustomerId: 'attacker-2' })).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'forbidden',
+    });
+
+    expect(mocks.prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('does not leak another customer redemption via the already-redeemed path', async () => {
+    mocks.prismaMock.redemption.findUnique.mockResolvedValue({
+      id: 'victim-redemption',
+      tokenId: 'token-1',
+      netValue: 25,
+      tokenDenomination: 5,
+      settlementRef: 'stl_victim',
+    });
+
+    await expect(redemptionService.redeem('token-1', {
+      transactionAmount: 20,
+      merchantId: 'merchant-1',
+      idempotencyKey: 'attack-2',
+    }, { authenticatedCustomerId: 'attacker-2' })).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it('allows the rightful owner to redeem', async () => {
+    const result = await redemptionService.redeem('token-1', {
+      transactionAmount: 30,
+      merchantId: 'merchant-1',
+      idempotencyKey: 'legit-1',
+    }, { authenticatedCustomerId: 'owner-1' });
+
+    expect(result.alreadyRedeemed).toBe(false);
+    expect(result.redemptionId).toBe('redemption-1');
+  });
+
+  it('returns 409 rather than 500 when the token is no longer ACTIVE', async () => {
+    mocks.prismaMock.token.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(redemptionService.redeem('token-1', {
+      transactionAmount: 30,
+      merchantId: 'merchant-1',
+      idempotencyKey: 'race-1',
+    }, { authenticatedCustomerId: 'owner-1' })).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'already_redeemed',
     });
   });
 });

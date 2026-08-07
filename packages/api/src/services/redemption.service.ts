@@ -10,8 +10,27 @@ import { validationService } from './validation.service';
 import { EventType, TokenStatus, RedeemTokenRequest, RedeemTokenResponse } from '@tokento/shared';
 import { AppError } from '../middleware/error.middleware';
 
+export interface RedeemOptions {
+  isSandbox?: boolean;
+  /**
+   * The customer established by authentication. Required — a redemption may only be
+   * performed by the token's owner, and making this mandatory means the compiler
+   * rejects any call site that forgets to pass it.
+   */
+  authenticatedCustomerId: string;
+}
+
 export class RedemptionService {
-  async redeem(tokenId: string, data: RedeemTokenRequest, isSandbox?: boolean): Promise<RedeemTokenResponse> {
+  async redeem(tokenId: string, data: RedeemTokenRequest, opts: RedeemOptions): Promise<RedeemTokenResponse> {
+    // Ownership is checked before anything else, including the duplicate-redemption
+    // early return — otherwise that path leaks another customer's redemption record.
+    const token = await prisma.token.findUnique({ where: { id: tokenId } });
+    if (!token) throw new AppError(404, 'token_not_found', 'Token not found.');
+
+    if (token.customerId !== opts.authenticatedCustomerId) {
+      throw new AppError(403, 'forbidden', 'Token does not belong to the authenticated customer.', { tokenId });
+    }
+
     // Idempotent duplicate check
     const existing = await prisma.redemption.findUnique({ where: { tokenId } });
     if (existing) {
@@ -29,32 +48,36 @@ export class RedemptionService {
       transactionAmount: data.transactionAmount,
       merchantId: data.merchantId,
       agentId: data.agentId,
-    }, isSandbox);
+    }, opts.isSandbox);
 
     if (!validation.valid) {
       throw new AppError(400, 'validation_failed', `Token validation failed: ${validation.reasonMessage}`, { reasonCode: validation.reasonCode, tokenId });
     }
 
-    const token = await prisma.token.findUnique({ where: { id: tokenId } });
-    if (!token) throw new AppError(404, 'token_not_found', 'Token not found.');
-
     const netValue = Math.max(0, data.transactionAmount - token.denomination);
     const settlementRef = generateSettlementRef();
 
-    // Atomic update + redemption log
-    const [, redemption] = await prisma.$transaction([
-      prisma.token.update({
+    // Interactive transaction: the conditional status flip and the redemption insert
+    // share one scope. updateMany returns a count instead of throwing P2025, so a lost
+    // race surfaces as a 409 the caller can act on rather than a 500 it will retry.
+    const redemption = await prisma.$transaction(async (tx) => {
+      const updated = await tx.token.updateMany({
         where: { id: tokenId, status: TokenStatus.ACTIVE },
         data: { status: TokenStatus.REDEEMED, redeemedAt: new Date() },
-      }),
-      prisma.redemption.create({
+      });
+
+      if (updated.count === 0) {
+        throw new AppError(409, 'already_redeemed', 'Token is no longer active.', { tokenId });
+      }
+
+      return tx.redemption.create({
         data: {
           tokenId, merchantId: data.merchantId, customerId: token.customerId,
           transactionAmount: data.transactionAmount, tokenDenomination: token.denomination,
           netValue, agentId: data.agentId || null, settlementRef,
         },
-      }),
-    ]);
+      });
+    });
 
     // Invalidate cache
     const keys = await redis.keys(`wallet:${token.customerId}:*`).catch(() => [] as string[]);
