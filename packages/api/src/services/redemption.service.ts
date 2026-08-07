@@ -9,6 +9,7 @@ import { generateSettlementRef } from '../utils/ids';
 import { validationService } from './validation.service';
 import { EventType, TokenStatus, RedeemTokenRequest, RedeemTokenResponse } from '@tokento/shared';
 import { AppError } from '../middleware/error.middleware';
+import { subtractMoneyFloorZero, toMoneyNumber } from '../utils/money';
 
 export interface RedeemOptions {
   isSandbox: boolean;
@@ -36,8 +37,8 @@ export class RedemptionService {
     if (existing) {
       return {
         redemptionId: existing.id, tokenId,
-        netTransactionValue: existing.netValue,
-        tokenDenomination: existing.tokenDenomination,
+        netTransactionValue: toMoneyNumber(existing.netValue),
+        tokenDenomination: toMoneyNumber(existing.tokenDenomination),
         settlementReference: existing.settlementRef,
         alreadyRedeemed: true,
       };
@@ -54,7 +55,7 @@ export class RedemptionService {
       throw new AppError(400, 'validation_failed', `Token validation failed: ${validation.reasonMessage}`, { reasonCode: validation.reasonCode, tokenId });
     }
 
-    const netValue = Math.max(0, data.transactionAmount - token.denomination);
+    const netValue = subtractMoneyFloorZero(data.transactionAmount, token.denomination);
     const settlementRef = generateSettlementRef();
 
     // Interactive transaction: the conditional status flip and the redemption insert
@@ -85,16 +86,17 @@ export class RedemptionService {
 
     emitEvent(EventType.TOKEN_REDEEMED, {
       tokenId, redemptionId: redemption.id, merchantId: data.merchantId,
-      customerId: token.customerId, denomination: token.denomination,
-      transactionAmount: data.transactionAmount, netValue, agentId: data.agentId, settlementRef,
+      customerId: token.customerId, denomination: toMoneyNumber(token.denomination),
+      transactionAmount: data.transactionAmount, netValue: toMoneyNumber(netValue),
+      agentId: data.agentId, settlementRef,
     });
 
-    logger.info({ redemptionId: redemption.id, tokenId, denomination: token.denomination, netValue }, 'Token redeemed');
+    logger.info({ redemptionId: redemption.id, tokenId, denomination: toMoneyNumber(token.denomination), netValue: toMoneyNumber(netValue) }, 'Token redeemed');
 
     return {
       redemptionId: redemption.id, tokenId,
-      netTransactionValue: redemption.netValue,
-      tokenDenomination: token.denomination,
+      netTransactionValue: toMoneyNumber(redemption.netValue),
+      tokenDenomination: toMoneyNumber(token.denomination),
       settlementReference: settlementRef,
       alreadyRedeemed: false,
     };

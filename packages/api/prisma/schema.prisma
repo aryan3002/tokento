@@ -48,14 +48,14 @@ model EarnRule {
   id                      String   @id @default(uuid())
   merchantId              String
   name                    String
-  spendThreshold          Float    @default(0)
-  tokenDenomination       Float
+  spendThreshold          Decimal    @default(0) @db.Decimal(12, 2)
+  tokenDenomination       Decimal @db.Decimal(12, 2)
   expiryDays              Int      @default(90)
   categoryRestriction     String?
   channelRestriction      String?
   stackabilityFlag        Boolean  @default(true)
   agentPresentableFlag    Boolean  @default(true)    // Default ON per decision log
-  minimumTransactionFloor Float    @default(0)
+  minimumTransactionFloor Decimal    @default(0) @db.Decimal(12, 2)
   isActive                Boolean  @default(true)
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
@@ -74,7 +74,7 @@ model Token {
   merchantId              String
   customerId              String
   earnRuleId              String
-  denomination            Float
+  denomination            Decimal @db.Decimal(12, 2)
   tokenType               String   @default("loyalty")  // loyalty | pricing | returns
   status                  String   @default("ACTIVE")    // ACTIVE | REDEEMED | EXPIRED
   signature               String                          // HMAC-SHA256
@@ -85,7 +85,7 @@ model Token {
   channelRestriction      String?
   stackabilityFlag        Boolean  @default(true)
   agentPresentableFlag    Boolean  @default(true)
-  minimumTransactionFloor Float    @default(0)
+  minimumTransactionFloor Decimal    @default(0) @db.Decimal(12, 2)
 
   // Timestamps
   issuedAt   DateTime  @default(now())
@@ -129,9 +129,9 @@ model Redemption {
   tokenId            String   @unique
   merchantId         String
   customerId         String
-  transactionAmount  Float
-  tokenDenomination  Float
-  netValue           Float
+  transactionAmount  Decimal @db.Decimal(12, 2)
+  tokenDenomination  Decimal @db.Decimal(12, 2)
+  netValue           Decimal @db.Decimal(12, 2)
   agentId            String?
   settlementRef      String   @default(uuid())
   redeemedAt         DateTime @default(now())

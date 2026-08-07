@@ -8,6 +8,7 @@ import prisma from '../db/client';
 import redis from '../db/redis';
 import { v4 as uuidv4 } from 'uuid';
 import { signToken } from '../utils/crypto';
+import { moneyLessThan, toMoneyNumber } from '../utils/money';
 import { logger } from '../utils/logger';
 import { emitEvent } from '../events/emitter';
 import { Token as PrismaToken } from '@prisma/client';
@@ -61,9 +62,9 @@ export class TokenService {
     }
 
     // Evaluate spend threshold
-    if (transactionAmount < earnRule.spendThreshold) {
+    if (moneyLessThan(transactionAmount, earnRule.spendThreshold)) {
       throw new AppError(400, 'below_spend_threshold',
-        `Transaction amount $${transactionAmount} is below the earn rule threshold of $${earnRule.spendThreshold}.`
+        `Transaction amount $${transactionAmount} is below the earn rule threshold of $${toMoneyNumber(earnRule.spendThreshold)}.`
       );
     }
 
@@ -94,10 +95,10 @@ export class TokenService {
       tokenId,
       merchantId,
       customerId,
-      denomination: earnRule.tokenDenomination,
+      denomination: toMoneyNumber(earnRule.tokenDenomination),
       expiryAt: expiryAt.toISOString(),
       isSandbox,
-      minimumTransactionFloor: earnRule.minimumTransactionFloor,
+      minimumTransactionFloor: toMoneyNumber(earnRule.minimumTransactionFloor),
       agentPresentableFlag: earnRule.agentPresentableFlag,
     });
 
@@ -183,7 +184,7 @@ export class TokenService {
       merchantId: token.merchantId,
       customerId: token.customerId,
       earnRuleId: token.earnRuleId,
-      denomination: token.denomination,
+      denomination: toMoneyNumber(token.denomination),
       tokenType: token.tokenType as TokenType,
       status: token.status as TokenStatus,
       signature: token.signature,
@@ -192,7 +193,7 @@ export class TokenService {
       channelRestriction: token.channelRestriction,
       stackabilityFlag: token.stackabilityFlag,
       agentPresentableFlag: token.agentPresentableFlag,
-      minimumTransactionFloor: token.minimumTransactionFloor,
+      minimumTransactionFloor: toMoneyNumber(token.minimumTransactionFloor),
       issuedAt: token.issuedAt,
       expiryAt: token.expiryAt,
       redeemedAt: token.redeemedAt,

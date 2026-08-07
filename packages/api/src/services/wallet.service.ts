@@ -8,6 +8,7 @@
 import prisma from '../db/client';
 import redis from '../db/redis';
 import { logger } from '../utils/logger';
+import { sumMoney, toMoneyNumber } from '../utils/money';
 import { Prisma } from '@prisma/client';
 import { CACHE_TTL, TokenType, TokenStatus, WalletQueryParams, WalletQueryResponse } from '@tokento/shared';
 
@@ -81,7 +82,7 @@ export class WalletService {
       ],
     });
 
-    const totalValue = tokens.reduce((sum: number, t) => sum + t.denomination, 0);
+    const totalValue = toMoneyNumber(sumMoney(tokens.map((t) => t.denomination)));
 
     const response: WalletQueryResponse = {
       customerId,
@@ -90,7 +91,7 @@ export class WalletService {
         merchantId: t.merchantId,
         customerId: t.customerId,
         earnRuleId: t.earnRuleId,
-        denomination: t.denomination,
+        denomination: toMoneyNumber(t.denomination),
         tokenType: t.tokenType as TokenType,
         status: t.status as TokenStatus,
         signature: t.signature,
@@ -99,7 +100,7 @@ export class WalletService {
         channelRestriction: t.channelRestriction,
         stackabilityFlag: t.stackabilityFlag,
         agentPresentableFlag: t.agentPresentableFlag,
-        minimumTransactionFloor: t.minimumTransactionFloor,
+        minimumTransactionFloor: toMoneyNumber(t.minimumTransactionFloor),
         issuedAt: t.issuedAt,
         expiryAt: t.expiryAt,
         redeemedAt: t.redeemedAt,

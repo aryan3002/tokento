@@ -19,7 +19,6 @@ dist/
 .DS_Store
 
 # Prisma
-packages/api/prisma/migrations/
 
 # Logs
 *.log
