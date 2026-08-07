@@ -92,12 +92,28 @@ export class WebhookService {
   }
 
   private async deliver(endpointId: string, url: string, secret: string, eventType: string, payload: Record<string, unknown>) {
-    const body = JSON.stringify({ type: eventType, timestamp: new Date().toISOString(), data: payload });
-    const signature = signWebhookPayload(secret, body);
-
     const delivery = await prisma.webhookDelivery.create({
       data: { webhookEndpointId: endpointId, eventType, payload: payload as object, attempts: 1 },
     });
+    await this.attemptDelivery(delivery.id, url, secret, eventType, payload, 1);
+  }
+
+  /**
+   * Perform one HTTP attempt for an existing delivery row and record the outcome.
+   * Shared by the initial dispatch and the retry worker so backoff state is
+   * computed in exactly one place.
+   */
+  async attemptDelivery(
+    deliveryId: string,
+    url: string,
+    secret: string,
+    eventType: string,
+    payload: Record<string, unknown>,
+    attempt: number,
+  ) {
+    const body = JSON.stringify({ type: eventType, timestamp: new Date().toISOString(), data: payload });
+    const signature = signWebhookPayload(secret, body);
+    const delivery = { id: deliveryId };
 
     try {
       const controller = new AbortController();
@@ -121,24 +137,69 @@ export class WebhookService {
         data: {
           responseCode: response.status,
           responseBody: responseBody ? responseBody.slice(0, 2000) : null,
+          attempts: attempt,
           deliveredAt: response.ok ? new Date() : null,
-          nextRetryAt: response.ok ? null : this.getNextRetryTime(1),
+          nextRetryAt: response.ok ? null : this.getNextRetryTime(attempt),
         },
       });
 
       if (!response.ok) {
-        logger.warn({ endpointId, url, status: response.status }, 'Webhook delivery failed');
+        logger.warn({ deliveryId, url, status: response.status, attempt }, 'Webhook delivery failed');
       }
     } catch (err) {
       await prisma.webhookDelivery.update({
         where: { id: delivery.id },
         data: {
           responseBody: err instanceof Error ? err.message : 'webhook_delivery_error',
-          nextRetryAt: this.getNextRetryTime(1),
+          attempts: attempt,
+          nextRetryAt: this.getNextRetryTime(attempt),
         },
       });
-      logger.error({ err, endpointId, url }, 'Webhook delivery error');
+      logger.error({ err, deliveryId, url, attempt }, 'Webhook delivery error');
     }
+  }
+
+  /**
+   * Re-attempt deliveries whose backoff has elapsed.
+   *
+   * nextRetryAt was written and indexed but never read by anything — no cron, no
+   * worker, no queue — and attempts was pinned at 1, so MAX_RETRIES and the whole
+   * backoff schedule were dead config and a failed delivery was never re-sent.
+   */
+  async retryPendingDeliveries(limit = 100): Promise<{ retried: number }> {
+    const due = await prisma.webhookDelivery.findMany({
+      where: {
+        deliveredAt: null,
+        nextRetryAt: { not: null, lte: new Date() },
+        attempts: { lt: WEBHOOK.MAX_RETRIES },
+      },
+      take: limit,
+      include: { webhookEndpoint: { select: { url: true, secret: true, isActive: true } } },
+    });
+
+    let retried = 0;
+    for (const delivery of due) {
+      if (!delivery.webhookEndpoint?.isActive) continue;
+      // Claim the row first so a second worker cannot pick up the same delivery.
+      const claimed = await prisma.webhookDelivery.updateMany({
+        where: { id: delivery.id, nextRetryAt: delivery.nextRetryAt },
+        data: { nextRetryAt: null },
+      });
+      if (claimed.count === 0) continue;
+
+      await this.attemptDelivery(
+        delivery.id,
+        delivery.webhookEndpoint.url,
+        delivery.webhookEndpoint.secret,
+        delivery.eventType,
+        (delivery.payload || {}) as Record<string, unknown>,
+        delivery.attempts + 1,
+      );
+      retried += 1;
+    }
+
+    if (retried > 0) logger.info({ retried }, 'Webhook retries dispatched');
+    return { retried };
   }
 
   private getNextRetryTime(attempt: number): Date | null {

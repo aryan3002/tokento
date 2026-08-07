@@ -11,6 +11,8 @@ import * as Sentry from '@sentry/node';
 import { API_PREFIX } from '@tokento/shared';
 import { logger } from './utils/logger';
 import prisma from './db/client';
+import { startExpirySweeper } from './jobs/expiry-sweeper';
+import { startWebhookRetryWorker } from './jobs/webhook-retry';
 import redis from './db/redis';
 import { requestId } from './middleware/request-id.middleware';
 import { auditLog } from './middleware/audit.middleware';
@@ -151,6 +153,12 @@ app.use(errorHandler());
 // ---- Start Server ----
 const server = app.listen(PORT, () => {
   logger.info({ port: PORT, env: process.env.NODE_ENV || 'development' }, `Tokento API server running on port ${PORT}`);
+  // Started only once the port is actually bound — otherwise a failed bind leaves
+  // background jobs running in a process that is about to die.
+  // Nothing else emits token.expired, and without this expiry is only a query-time
+  // filter, so expired tokens linger as ACTIVE and inflate liability reports.
+  startExpirySweeper();
+  startWebhookRetryWorker();
 });
 
 // Without this, every deploy drops in-flight audit writes, idempotency records and
