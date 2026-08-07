@@ -58,6 +58,16 @@ router.get('/stream', async (req: Request, res: Response) => {
       res.status(401).json({ error: { code: 'invalid_api_key', message: 'Invalid or deactivated API key.' } });
       return;
     }
+    // This route authenticated by hand and skipped the expiry and scope checks the
+    // shared middleware performs. Apply them here too.
+    if (apiKey.expiresAt && apiKey.expiresAt < new Date()) {
+      res.status(401).json({ error: { code: 'expired_api_key', message: 'API key has expired.' } });
+      return;
+    }
+    if (!apiKey.scopes.includes('tokens:read')) {
+      res.status(403).json({ error: { code: 'insufficient_scopes', message: 'This API key lacks the tokens:read scope.' } });
+      return;
+    }
     merchantId = apiKey.merchantId;
   }
 
@@ -78,9 +88,15 @@ router.get('/stream', async (req: Request, res: Response) => {
   for (const eventType of STREAMED_EVENTS) {
     const listener = (payload: Record<string, unknown>) => {
       const payloadMerchant = payload.merchantId as string | undefined;
-      // Wallet/customer-scoped events have no merchantId; broadcast them so the
-      // dashboard can refresh derived state. Merchant-scoped events are filtered.
-      if (payloadMerchant && payloadMerchant !== merchantId) return;
+      // Default to DROP. Broadcasting unscoped events sent customer identifiers to
+      // every connected merchant — combined with a customer UUID being enough to read
+      // a wallet, that was a live harvesting channel. An event without a merchantId is
+      // a bug in the emitter, not a licence to fan it out.
+      if (!payloadMerchant) {
+        logger.warn({ eventType }, 'Dropping event with no merchantId; cannot scope it to a subscriber');
+        return;
+      }
+      if (payloadMerchant !== merchantId) return;
       send(eventType, payload);
     };
     eventBus.on(eventType, listener);

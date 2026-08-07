@@ -1,10 +1,9 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, useMemo, FormEvent } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-const API_KEY =
-  process.env.NEXT_PUBLIC_TOKENTO_API_KEY ||
-  "tk_dev_local_sandbox_key_do_not_use_in_production_0000000000000000";
+// All API traffic goes through the same-origin server proxy at /api/proxy, which
+// attaches the merchant API key server-side. No credential is shipped to the browser.
+const API_BASE = "/api/proxy";
 const B2B_SESSION_STORAGE_KEY = "tokento_b2b_session_jwt";
 const B2B_SESSION_CLEARED_EVENT = "tokento:b2b-session-cleared";
 
@@ -127,7 +126,8 @@ function buildAuthHeaders(init: RequestInit, sessionJwt: string | null): Headers
     headers.set("Authorization", `Bearer ${sessionJwt}`);
     headers.delete("X-API-Key");
   } else {
-    headers.set("X-API-Key", API_KEY);
+    // No client-side credential: the proxy attaches the API key server-side.
+    headers.delete("X-API-Key");
     headers.delete("Authorization");
   }
   return headers;
@@ -176,7 +176,6 @@ async function api<T = unknown>(path: string, init: RequestInit = {}): Promise<T
 
 export default function Dashboard() {
   const [tab, setTab] = useState<Tab>("overview");
-  const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [b2bSessionJwt, setB2BSessionJwtState] = useState<string | null>(() => getB2BSessionJwt());
   const [sessionInput, setSessionInput] = useState("");
   const [authWarning, setAuthWarning] = useState<string | null>(null);
@@ -328,10 +327,12 @@ export default function Dashboard() {
     const connect = () => {
       if (cancelled) return;
       setConnection("connecting");
+      // The API key is never placed in a query string (it lands in proxy, CDN and
+      // browser-history logs); the proxy authenticates the upstream stream instead.
       const authQuery = b2bSessionJwt
-        ? `sessionJwt=${encodeURIComponent(b2bSessionJwt)}`
-        : `apiKey=${encodeURIComponent(API_KEY)}`;
-      const url = `${API_BASE}/api/v1/events/stream?${authQuery}`;
+        ? `?sessionJwt=${encodeURIComponent(b2bSessionJwt)}`
+        : "";
+      const url = `${API_BASE}/api/v1/events/stream${authQuery}`;
       const es = new EventSource(url);
       esRef.current = es;
 
@@ -520,9 +521,6 @@ export default function Dashboard() {
           {tab === "settings" && merchant && (
             <SettingsTab
               key={merchant.id}
-              apiKey={API_KEY}
-              visible={apiKeyVisible}
-              onToggle={() => setApiKeyVisible(!apiKeyVisible)}
               merchant={merchant}
               b2bSessionJwt={b2bSessionJwt}
               loginEmail={loginEmail}
@@ -1071,9 +1069,6 @@ function WebhooksTab({
 
 /* ---- Settings ---- */
 function SettingsTab({
-  apiKey,
-  visible,
-  onToggle,
   merchant,
   b2bSessionJwt,
   loginEmail,
@@ -1089,9 +1084,6 @@ function SettingsTab({
   onSessionClear,
   onSaved,
 }: {
-  apiKey: string;
-  visible: boolean;
-  onToggle: () => void;
   merchant: Merchant;
   b2bSessionJwt: string | null;
   loginEmail: string;
@@ -1208,20 +1200,14 @@ function SettingsTab({
 
       <div className="glass rounded-xl p-5">
         <h3 className="font-semibold mb-4">API Key</h3>
-        <div className="flex items-center gap-3">
-          <code className="flex-1 bg-surface-3 rounded-lg px-4 py-3 font-mono text-sm select-all break-all">
-            {visible ? apiKey : "••••••••••••••••••••••••••••"}
-          </code>
-          <button onClick={onToggle} className="px-4 py-3 rounded-lg bg-surface-3 hover:bg-surface-4 text-sm font-medium transition-colors shrink-0">
-            {visible ? "Hide" : "Reveal"}
-          </button>
-          <button onClick={() => navigator.clipboard.writeText(apiKey)} className="px-4 py-3 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-medium transition-colors shrink-0">
-            Copy
-          </button>
+        <div className="rounded-lg bg-surface-3 px-4 py-3 text-sm">
+          The merchant API key is held server-side and is never sent to the browser.
+          Read it from your own environment when you need it for server-to-server calls.
         </div>
         <p className="text-xs text-text-muted mt-2">
           Use this key in the <code className="bg-surface-3 px-1 rounded">X-API-Key</code> header. Loaded from{" "}
-          <code className="bg-surface-3 px-1 rounded">NEXT_PUBLIC_TOKENTO_API_KEY</code>; seeded via{" "}
+          <code className="bg-surface-3 px-1 rounded">TOKENTO_API_KEY</code> (server-side only,
+          never exposed to the browser); seeded via{" "}
           <code className="bg-surface-3 px-1 rounded">DEV_FIXED_API_KEY</code>.
         </p>
       </div>
@@ -1286,8 +1272,8 @@ function DemoTab({ merchant }: { merchant: Merchant | null }) {
     },
   }, null, 2), []);
 
-  const curlMint = `curl -X POST ${API_BASE}/api/v1/tokens/mint \\
-  -H "X-API-Key: ${API_KEY}" \\
+  const curlMint = `curl -X POST http://localhost:4000/api/v1/tokens/mint \\
+  -H "X-API-Key: $TOKENTO_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "merchantId": "${merchant?.id || "<merchant-id>"}",

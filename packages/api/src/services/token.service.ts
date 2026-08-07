@@ -79,7 +79,7 @@ export class TokenService {
       });
       walletCreated = true;
 
-      emitEvent(EventType.WALLET_CREATED, { customerId });
+      emitEvent(EventType.WALLET_CREATED, { customerId, merchantId });
     }
 
     // Calculate expiry
