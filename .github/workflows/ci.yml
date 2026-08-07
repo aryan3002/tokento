@@ -4,7 +4,8 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [codex/**]
+    # main was previously excluded, so nothing verified the default branch.
+    branches: [main, codex/**]
 
 jobs:
   test:
@@ -82,3 +83,15 @@ jobs:
 
       - name: Test
         run: pnpm --filter api test
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks needs full history
+
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

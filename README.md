@@ -28,7 +28,7 @@ Tokento makes merchant loyalty programs natively accessible to AI agents:
 1. **Merchants issue** structured value tokens via API at the moment of transaction
 2. **Tokens live in** a platform-managed customer wallet, cross-merchant by design
 3. **AI agents query** the wallet through the **Token Query Interface (TQI)** — three endpoints, protocol-agnostic
-4. **Tokens redeem** atomically at checkout with full audit trail, idempotency, and settlement
+4. **Tokens redeem** atomically at checkout with an audit trail and idempotency. **Settlement is not implemented** — see Project status below
 
 ```
 ┌──────────────┐    1. mint token    ┌─────────────────────────────────────────┐
@@ -106,13 +106,34 @@ This is a pnpm + Turborepo monorepo:
 
 ---
 
+## Project status and scope
+
+Read this before evaluating the code.
+
+**What works:** token issuance with HMAC signatures, the Token Query Interface (query / validate / redeem), a platform-managed wallet, merchant configuration, webhooks with real retry and backoff, scheduled token expiry, an MCP adapter, a merchant dashboard with live SSE, and a checkout handoff widget. 111 tests across the API and adapter.
+
+**What is deliberately not built:**
+
+| Area | Status |
+|---|---|
+| **Settlement** | **Not implemented.** No ledger, no double-entry journal, no payout pipeline. `settlementReference` is an opaque correlation id and the redeem response reports `settlementStatus: "not_implemented"`. **No funds move.** A redemption records that value was applied at checkout, nothing more. |
+| **Fraud controls** | Rate limiting only. No velocity checks, no risk scoring. |
+| **`merchant.settlementType` / `settlementTiming`** | Declarative only — stored and shown, but no code branches on them yet. |
+| **Transactional outbox** | Absent. A crash between the redeem commit and the event listener loses that webhook. |
+| **HMAC key rotation** | Unsupported. Tokens carry no key version, so rotating the master key invalidates every outstanding token. |
+| **Edge runtime** | The API is Express + Prisma on Node. It cannot run on Cloudflare Workers as-is; only the MCP adapter does. |
+
+**This is sandbox software.** It is not PCI-scoped, has not been independently audited, and holds no real customer data. Do not put real money through it.
+
 ## Engineering Invariants
 
 - **HMAC-SHA256 signing.** Every token carries a signature derived from `HMAC_MASTER_KEY` + merchant ID. Verified at both validate and redeem.
 - **Idempotency by default.** `mint` and `redeem` accept idempotency keys; `idempotency_records` table holds keys for 24 hours. Middleware handles it generically.
-- **Sandbox isolation.** Sandbox API keys cannot see production data and vice versa. Enforced in middleware.
-- **Async audit log.** Audit writes go through an event emitter — they never block the redemption path.
-- **Wallet cache.** Redis-backed, 60s TTL on wallet queries. Invalidated on mint/redeem.
+- **Sandbox isolation.** Sandbox and production data never mix. The context is established during authentication — an API key carries its own flag, a customer session is scoped to the deployment — and every service takes it as a required parameter, so the compiler rejects a route that forgets to pass it.
+- **Redemption ownership.** A token may only be redeemed by the customer it belongs to, checked before any other work. A lost concurrency race returns 409, never a 500 an agent would retry.
+- **Money as Decimal.** All monetary values are `Decimal(12,2)` at rest with exact arithmetic. Never floats.
+- **Audit log.** Every API call is recorded. Writes are fire-and-forget from response middleware so they do not block the redemption path — which also means a hard crash can drop the most recent entries. There is no transactional outbox yet.
+- **Wallet cache.** Redis-backed, 60s TTL, scoped per customer *and* environment. Invalidated on mint, redeem and expiry via a per-customer key index (never a blocking `KEYS` scan).
 
 ---
 
