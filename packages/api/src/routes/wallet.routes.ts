@@ -16,9 +16,13 @@ router.get('/:customerId/tokens',
   rateLimit('QUERY'),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { customerId } = req.params;
+      // 'me' resolves to the authenticated customer, so a caller never needs to know
+      // (or transmit) the customer UUID to read its own wallet.
+      const requested = req.params.customerId === 'me' ? req.customerId : req.params.customerId;
+      const customerId = requested as string;
+
       // Ensure customer can only access own wallet
-      if (customerId !== req.customerId) {
+      if (!customerId || customerId !== req.customerId) {
         res.status(403).json({
           error: { code: 'forbidden', message: 'Cannot access another customer\'s wallet.' },
           requestId: req.requestId,

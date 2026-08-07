@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import worker from './index';
 
 describe('mcp adapter worker', () => {
@@ -51,5 +51,54 @@ describe('mcp adapter worker', () => {
 
     expect(res.status).toBe(200);
     expect(body.error?.code).toBe(-32601);
+  });
+});
+
+describe('identity is taken from the wallet token, never from a tool argument', () => {
+  const env = { API_BASE_URL: 'http://localhost:4000' } as never;
+
+  function call(name: string, args: Record<string, unknown>) {
+    return new Request('http://worker/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }),
+    });
+  }
+
+  it('refuses a tool call with no wallet_token', async () => {
+    const res = await worker.fetch(call('redeem_token', {
+      token_id: 't1', merchant_id: 'm1', transaction_amount: 10, idempotency_key: 'k',
+    }), env);
+    const body = await res.json() as { result: { isError: boolean; content: { text: string }[] } };
+    expect(body.result.isError).toBe(true);
+    expect(body.result.content[0].text).toMatch(/wallet_token/);
+  });
+
+  it('forwards the wallet token verbatim and never synthesises a dev session', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ tokens: [] }), { headers: { 'Content-Type': 'application/json' } }),
+    );
+
+    await worker.fetch(call('query_loyalty_tokens', { wallet_token: 'session-abc' }), env);
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    const auth = (init.headers as Record<string, string>)['Authorization'];
+    expect(auth).toBe('Bearer session-abc');
+    expect(auth).not.toContain('dev_session');
+    // The customer is resolved from the session, so no customer id travels in the URL.
+    expect(url).toContain('/wallet/me/tokens');
+    fetchSpy.mockRestore();
+  });
+
+  it('does not advertise customer_id as an input on any tool', async () => {
+    const res = await worker.fetch(new Request('http://worker/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }),
+    }), env);
+    const body = await res.json() as { result: { tools: { inputSchema: { properties: Record<string, unknown> } }[] } };
+    for (const tool of body.result.tools) {
+      expect(Object.keys(tool.inputSchema.properties)).not.toContain('customer_id');
+    }
   });
 });
