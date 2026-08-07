@@ -15,7 +15,28 @@ const WebhookDeliveriesQuerySchema = z.object({
 });
 
 // POST /v1/merchants — Register (no auth required for registration)
+// Self-registration is unauthenticated and issues a full-scope key, so on any
+// public deployment it must be gated. Set SIGNUP_INVITE_CODE to require an
+// invite; leave it unset only for local development.
 router.post('/', async (req: Request, res: Response, next: NextFunction) => {
+  const requiredInvite = process.env.SIGNUP_INVITE_CODE;
+  if (requiredInvite) {
+    const provided = req.headers['x-invite-code'];
+    if (provided !== requiredInvite) {
+      res.status(403).json({
+        error: { code: 'invite_required', message: 'Merchant self-registration requires a valid invite code.' },
+        requestId: req.requestId || 'unknown',
+      });
+      return;
+    }
+  } else if (process.env.NODE_ENV === 'production') {
+    res.status(403).json({
+      error: { code: 'signup_disabled', message: 'Merchant self-registration is disabled on this deployment.' },
+      requestId: req.requestId || 'unknown',
+    });
+    return;
+  }
+
   try {
     const data = CreateMerchantSchema.parse(req.body);
     const result = await merchantService.create(data);

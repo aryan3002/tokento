@@ -77,6 +77,22 @@ app.use(express.json({ limit: '1mb' }));
 app.use(requestId());
 app.use(auditLog());
 
+// A deployed demo mints and redeems value on the open internet. DEMO_READONLY
+// freezes both without a redeploy, so an incident can be stopped in seconds.
+app.use((req, res, next) => {
+  if (process.env.DEMO_READONLY !== 'true') return next();
+  const isWrite = req.method === 'POST' || req.method === 'PUT' ||
+                  req.method === 'PATCH' || req.method === 'DELETE';
+  if (!isWrite) return next();
+  res.status(503).json({
+    error: {
+      code: 'demo_readonly',
+      message: 'This deployment is in read-only demo mode; write operations are disabled.',
+    },
+    requestId: req.requestId || 'unknown',
+  });
+});
+
 // ---- Health Check ----
 /**
  * A dependency probe must never outlive the load balancer's own timeout — an
