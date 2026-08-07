@@ -134,3 +134,61 @@ describe('idempotency middleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('idempotency key scoping and failure caching', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.prismaMock.idempotencyRecord.findUnique.mockResolvedValue(null);
+    mocks.prismaMock.idempotencyRecord.create.mockResolvedValue({ id: 'record-1' });
+  });
+
+  function runFor(req: Partial<Request>, res: Response) {
+    const next = vi.fn() as unknown as NextFunction;
+    return idempotency()(req as Request, res, next);
+  }
+
+  it('scopes the lookup key by tenant so two merchants cannot collide', async () => {
+    await runFor({
+      method: 'POST', path: '/mint', headers: { 'idempotency-key': 'shared' },
+      merchantId: 'merchant-A',
+    } as Partial<Request>, createRes());
+    const keyA = mocks.prismaMock.idempotencyRecord.findUnique.mock.calls[0][0].where.key;
+
+    vi.clearAllMocks();
+    mocks.prismaMock.idempotencyRecord.findUnique.mockResolvedValue(null);
+
+    await runFor({
+      method: 'POST', path: '/mint', headers: { 'idempotency-key': 'shared' },
+      merchantId: 'merchant-B',
+    } as Partial<Request>, createRes());
+    const keyB = mocks.prismaMock.idempotencyRecord.findUnique.mock.calls[0][0].where.key;
+
+    expect(keyA).not.toBe(keyB);
+    expect(keyA).toContain('merchant-A');
+    expect(keyB).toContain('merchant-B');
+  });
+
+  it('does not cache a 4xx response', async () => {
+    const res = createRes();
+    (res as unknown as { statusCode: number }).statusCode = 400;
+    await runFor({
+      method: 'POST', path: '/mint', headers: { 'idempotency-key': 'k-400' },
+      merchantId: 'merchant-A',
+    } as Partial<Request>, res);
+
+    res.json({ error: { code: 'validation_error' } });
+    expect(mocks.prismaMock.idempotencyRecord.create).not.toHaveBeenCalled();
+  });
+
+  it('caches a 2xx response', async () => {
+    const res = createRes();
+    (res as unknown as { statusCode: number }).statusCode = 200;
+    await runFor({
+      method: 'POST', path: '/mint', headers: { 'idempotency-key': 'k-200' },
+      merchantId: 'merchant-A',
+    } as Partial<Request>, res);
+
+    res.json({ ok: true });
+    expect(mocks.prismaMock.idempotencyRecord.create).toHaveBeenCalledTimes(1);
+  });
+});

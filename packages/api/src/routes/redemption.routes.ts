@@ -14,6 +14,15 @@ const router = Router();
 // POST /v1/tokens/:id/redeem
 router.post('/:id/redeem',
   authenticateBearerToken(),
+  // Agents (and the MCP adapter) send idempotencyKey in the body, but the middleware
+  // reads only the header — so MCP redemptions had no idempotency protection at all.
+  // Promote a body key into the header so one code path serves both.
+  (req: Request, _res: Response, next: NextFunction) => {
+    if (!req.headers['idempotency-key'] && typeof req.body?.idempotencyKey === 'string') {
+      req.headers['idempotency-key'] = req.body.idempotencyKey;
+    }
+    next();
+  },
   rateLimit('REDEEM'),
   idempotency(),
   async (req: Request, res: Response, next: NextFunction) => {

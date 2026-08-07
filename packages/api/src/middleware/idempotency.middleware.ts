@@ -24,7 +24,12 @@ export function idempotency() {
       return;
     }
 
-    const key = `${req.method}:${req.path}:${idempotencyKey}`;
+    // Scope by principal. Without this the key is shared across tenants, and since the
+    // mint path is the constant '/mint' for every merchant, a colliding or guessed
+    // Idempotency-Key returned another merchant's mint response — token id, customer id
+    // and signature included.
+    const tenant = req.merchantId ?? req.customerId ?? 'anon';
+    const key = `${tenant}:${req.method}:${req.path}:${idempotencyKey}`;
 
     try {
       // Check for existing record
@@ -48,6 +53,13 @@ export function idempotency() {
       // Override res.json to cache the response
       const originalJson = res.json.bind(res);
       res.json = function (body: unknown) {
+        // Only successful responses are replayable. Caching a 4xx/5xx pins a transient
+        // failure — a rate limit, a validation slip, an outage — for the full 24h TTL,
+        // so the caller can never retry that key even once the cause is gone.
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return originalJson(body);
+        }
+
         // Cache the response asynchronously
         const expiresAt = new Date();
         expiresAt.setHours(expiresAt.getHours() + IDEMPOTENCY.KEY_TTL_HOURS);
