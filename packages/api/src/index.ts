@@ -10,6 +10,8 @@ import helmet from 'helmet';
 import * as Sentry from '@sentry/node';
 import { API_PREFIX } from '@tokento/shared';
 import { logger } from './utils/logger';
+import prisma from './db/client';
+import redis from './db/redis';
 import { requestId } from './middleware/request-id.middleware';
 import { auditLog } from './middleware/audit.middleware';
 import { errorHandler, notFoundHandler } from './middleware/error.middleware';
@@ -50,14 +52,58 @@ const REDOC_PATH = path.resolve(__dirname, '../docs.html');
 
 // ---- Global Middleware ----
 app.use(helmet());
-app.use(cors());
+// Required for req.ip to reflect X-Forwarded-For behind a load balancer; without it
+// every caller shares one rate-limit bucket.
+app.set('trust proxy', 1);
+
+// A payments-adjacent API must not answer every origin. Allowlist only.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '')
+  .split(',').map((o) => o.trim()).filter(Boolean);
+app.use(cors({
+  origin(origin, callback) {
+    // Same-origin/server-to-server requests carry no Origin header.
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    if (ALLOWED_ORIGINS.length === 0 && process.env.NODE_ENV !== 'production') {
+      return callback(null, true);
+    }
+    return callback(new Error('origin_not_allowed'));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '1mb' }));
 app.use(requestId());
 app.use(auditLog());
 
 // ---- Health Check ----
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'tokento-api', timestamp: new Date().toISOString() });
+/**
+ * A dependency probe must never outlive the load balancer's own timeout — an
+ * unbounded check hangs instead of reporting, which reads as a network failure
+ * rather than an unhealthy instance. ioredis in particular retries internally
+ * and will not reject promptly on its own.
+ */
+function withTimeout<T>(operation: Promise<T>, ms = 2000): Promise<T> {
+  return Promise.race([
+    operation,
+    new Promise<T>((_resolve, reject) =>
+      setTimeout(() => reject(new Error('health_check_timeout')), ms).unref()),
+  ]);
+}
+
+app.get('/health', async (_req, res) => {
+  // Checks dependencies rather than returning ok unconditionally, so a load balancer
+  // stops routing to an instance whose database or cache is gone.
+  const checks = { database: false, cache: false };
+  try { await withTimeout(prisma.$queryRaw`SELECT 1`); checks.database = true; } catch { /* reported below */ }
+  try { await withTimeout(redis.ping()); checks.cache = true; } catch { /* reported below */ }
+
+  const healthy = checks.database && checks.cache;
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'ok' : 'degraded',
+    service: 'tokento-api',
+    checks,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 app.get('/docs/openapi.yaml', (_req, res) => {
@@ -103,8 +149,24 @@ app.use(notFoundHandler());
 app.use(errorHandler());
 
 // ---- Start Server ----
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info({ port: PORT, env: process.env.NODE_ENV || 'development' }, `Tokento API server running on port ${PORT}`);
 });
+
+// Without this, every deploy drops in-flight audit writes, idempotency records and
+// webhook dispatches mid-request.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    logger.info({ signal }, 'Shutting down, draining connections');
+    server.close(() => {
+      logger.info('Server closed');
+      process.exit(0);
+    });
+    setTimeout(() => {
+      logger.warn('Drain timeout exceeded, forcing exit');
+      process.exit(1);
+    }, 10_000).unref();
+  });
+}
 
 export default app;

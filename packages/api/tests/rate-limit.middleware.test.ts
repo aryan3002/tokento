@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';
 import { rateLimit } from '../src/middleware/rate-limit.middleware';
+import { RATE_LIMITS } from '@tokento/shared';
 
 const mocks = vi.hoisted(() => {
   const execMock = vi.fn();
@@ -116,5 +117,62 @@ describe('rateLimit middleware', () => {
     await middleware(req, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('rate limit boundary and failure mode', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function runWithCount(count: number, tier: 'REDEEM' | 'QUERY') {
+    mocks.execMock.mockResolvedValue([[null, 0], [null, 1], [null, count], [null, 1]]);
+    const res = createRes();
+    const next = vi.fn() as unknown as NextFunction;
+    await rateLimit(tier)({ customerId: 'cust-1', requestId: 'r' } as unknown as Request, res, next);
+    return { res, next };
+  }
+
+  async function runWithRedisDown(tier: 'REDEEM' | 'QUERY') {
+    mocks.execMock.mockRejectedValue(new Error('redis down'));
+    const res = createRes();
+    const next = vi.fn() as unknown as NextFunction;
+    await rateLimit(tier)({ customerId: 'cust-1', requestId: 'r' } as unknown as Request, res, next);
+    return { res, next };
+  }
+
+  it('admits exactly `limit` requests and blocks the next one', async () => {
+    const limit = RATE_LIMITS.REDEEM;
+    // zadd precedes zcard, so the Nth request in the window observes count === N.
+    const atLimit = await runWithCount(limit, 'REDEEM');
+    expect(atLimit.next).toHaveBeenCalledTimes(1);
+
+    const overLimit = await runWithCount(limit + 1, 'REDEEM');
+    expect(overLimit.res.status).toHaveBeenCalledWith(429);
+    expect(overLimit.next).not.toHaveBeenCalled();
+  });
+
+  it('fails CLOSED with 503 on redeem when Redis is unavailable', async () => {
+    const { res, next } = await runWithRedisDown('REDEEM');
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('fails OPEN on a read when Redis is unavailable', async () => {
+    const { res, next } = await runWithRedisDown('QUERY');
+    expect(res.status).not.toHaveBeenCalledWith(503);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('keys on the authenticated customer rather than the shared IP', async () => {
+    mocks.execMock.mockResolvedValue([[null, 0], [null, 1], [null, 1], [null, 1]]);
+    const next = vi.fn() as unknown as NextFunction;
+    await rateLimit('QUERY')(
+      { customerId: 'cust-9', ip: '10.0.0.1', requestId: 'r' } as unknown as Request,
+      createRes(), next,
+    );
+    const key = mocks.pipelineMock.zcard.mock.calls[0][0];
+    expect(key).toContain('cust-9');
+    expect(key).not.toContain('10.0.0.1');
   });
 });

@@ -14,14 +14,35 @@ type RateLimitTier = keyof typeof RATE_LIMITS;
 /**
  * Rate limit middleware using Redis sliding window counter.
  */
+/** Tiers that move value. A limiter outage must not become an open door. */
+const FAIL_CLOSED_TIERS: ReadonlySet<RateLimitTier> = new Set(['REDEEM', 'MINT'] as RateLimitTier[]);
+
 export function rateLimit(tier: RateLimitTier = 'DEFAULT') {
   const limit = RATE_LIMITS[tier];
   const windowMs = CACHE_TTL.RATE_LIMIT_WINDOW * 1000;
+  const failClosed = FAIL_CLOSED_TIERS.has(tier);
+
+  const unavailable = (req: Request, res: Response, next: NextFunction): void => {
+    if (!failClosed) {
+      next();
+      return;
+    }
+    res.status(503).json({
+      error: {
+        code: 'rate_limit_unavailable',
+        message: 'Rate limiting is unavailable; value-moving operations are refused.',
+      },
+      requestId: req.requestId || 'unknown',
+    });
+  };
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      // Use merchant ID if available, otherwise use IP
-      const identifier = req.merchantId || req.ip || 'unknown';
+      // Key on the authenticated principal. Falling back to req.ip for every caller
+      // put all customers in one bucket behind a load balancer — trivially bypassed by
+      // rotating source IPs, and usable as a denial-of-service against everyone else.
+      // Requires `trust proxy` (set in index.ts) for req.ip to be meaningful.
+      const identifier = req.merchantId || req.customerId || req.ip || 'unknown';
       const key = `ratelimit:${tier}:${identifier}`;
       const now = Date.now();
       const windowStart = now - windowMs;
@@ -36,9 +57,8 @@ export function rateLimit(tier: RateLimitTier = 'DEFAULT') {
       const results = await pipeline.exec();
 
       if (!results) {
-        // Redis unavailable — fail open
-        logger.warn('Rate limit: Redis unavailable, failing open');
-        next();
+        logger.warn({ tier, failClosed }, 'Rate limit: Redis unavailable');
+        unavailable(req, res, next);
         return;
       }
 
@@ -49,6 +69,8 @@ export function rateLimit(tier: RateLimitTier = 'DEFAULT') {
       res.setHeader('X-RateLimit-Remaining', Math.max(0, limit - count));
       res.setHeader('X-RateLimit-Reset', Math.ceil((now + windowMs) / 1000));
 
+      // zadd runs before zcard, so `count` includes the current request: blocking at
+      // count > limit admits exactly `limit` requests per window, which is correct.
       if (count > limit) {
         res.status(429).json({
           error: {
@@ -67,9 +89,8 @@ export function rateLimit(tier: RateLimitTier = 'DEFAULT') {
 
       next();
     } catch (err) {
-      // Fail open if Redis is down
-      logger.error({ err }, 'Rate limit middleware error — failing open');
-      next();
+      logger.error({ err, tier, failClosed }, 'Rate limit middleware error');
+      unavailable(req, res, next);
     }
   };
 }

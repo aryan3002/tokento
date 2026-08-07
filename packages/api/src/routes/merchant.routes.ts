@@ -84,7 +84,7 @@ router.get('/me/redemptions', authenticateApiKeyOrB2BSession(['tokens:read']), a
 router.post('/me/api-keys', authenticateApiKeyOrB2BSession(['merchants:write']), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = CreateApiKeySchema.parse(req.body);
-    const result = await merchantService.createApiKey(req.merchantId!, data);
+    const result = await merchantService.createApiKey(req.merchantId!, data, req.apiKeyScopes);
     res.status(201).json(result);
   } catch (err) { next(err); }
 });

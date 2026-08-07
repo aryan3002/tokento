@@ -108,11 +108,29 @@ export class MerchantService {
   }
 
   // ---- API Keys ----
-  async createApiKey(merchantId: string, data: { scopes: string[]; rateLimit?: number; expiresInDays?: number | null }) {
+  /**
+   * @param callerScopes scopes held by the key making this request. Requested scopes are
+   * intersected with them — otherwise a key holding only `merchants:write` could mint a
+   * key with arbitrary scopes and escalate itself to full access.
+   */
+  async createApiKey(
+    merchantId: string,
+    data: { scopes: string[]; rateLimit?: number; expiresInDays?: number | null },
+    callerScopes?: string[],
+  ) {
+    const scopes = callerScopes
+      ? data.scopes.filter((scope) => callerScopes.includes(scope))
+      : data.scopes;
+
+    if (data.scopes.length > 0 && scopes.length === 0) {
+      throw new AppError(403, 'scope_escalation_denied',
+        'None of the requested scopes are held by the calling key.');
+    }
+
     const { rawKey, keyPrefix, keyHash } = generateApiKey();
     const expiresAt = data.expiresInDays ? new Date(Date.now() + data.expiresInDays * 86400000) : null;
     await prisma.apiKey.create({
-      data: { merchantId, keyPrefix, keyHash, scopes: data.scopes, rateLimit: data.rateLimit || 60, isSandbox: true, expiresAt },
+      data: { merchantId, keyPrefix, keyHash, scopes, rateLimit: data.rateLimit || 60, isSandbox: true, expiresAt },
     });
     return { apiKey: rawKey, keyPrefix };
   }
