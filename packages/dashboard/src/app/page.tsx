@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef, useCallback, useMemo, FormEvent } from "react";
+import { FirstRun } from "./components/FirstRun";
 
 // All API traffic goes through the same-origin server proxy at /api/proxy, which
 // attaches the merchant API key server-side. No credential is shipped to the browser.
@@ -102,14 +103,14 @@ type ConnectionState = "connecting" | "live" | "down";
 type LoginStatus = "idle" | "sending" | "sent" | "error";
 
 const TAB_DEFS: { key: Tab; label: string; icon: string }[] = [
-  { key: "overview", label: "Overview", icon: "📊" },
-  { key: "tokens", label: "Tokens", icon: "🎫" },
-  { key: "rules", label: "Earn Rules", icon: "⚙️" },
-  { key: "redemptions", label: "Redemptions", icon: "💰" },
-  { key: "webhooks", label: "Webhooks", icon: "🔔" },
-  { key: "settings", label: "Settings", icon: "🔑" },
-  { key: "demo", label: "Demo Wiring", icon: "🤖" },
-  { key: "status", label: "System Status", icon: "🟢" },
+  { key: "overview", label: "Overview", icon: "01" },
+  { key: "tokens", label: "Tokens", icon: "02" },
+  { key: "rules", label: "Earn Rules", icon: "03" },
+  { key: "redemptions", label: "Redemptions", icon: "04" },
+  { key: "webhooks", label: "Webhooks", icon: "05" },
+  { key: "settings", label: "Settings", icon: "06" },
+  { key: "demo", label: "Demo Wiring", icon: "07" },
+  { key: "status", label: "System Status", icon: "08" },
 ];
 
 const SERVICES = [
@@ -191,6 +192,9 @@ export default function Dashboard() {
   const [tokens, setTokens] = useState<Token[]>([]);
   const [earnRules, setEarnRules] = useState<EarnRule[]>([]);
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
+  // An agent has "connected" once it has actually queried or validated a token.
+  // Seeded from history so the signal survives a page reload.
+  const [agentSeen, setAgentSeen] = useState(false);
   const [webhookEndpoints, setWebhookEndpoints] = useState<WebhookEndpoint[]>([]);
   const [webhookDeliveries, setWebhookDeliveries] = useState<WebhookDelivery[]>([]);
 
@@ -380,6 +384,12 @@ export default function Dashboard() {
         flashRow(payload.tokenId);
       });
 
+      es.addEventListener("token.validated", () => {
+        // An agent checking whether a token applies is the first sign it is wired up.
+        setAgentSeen(true);
+        setLastEventAt(new Date().toISOString());
+      });
+
       es.addEventListener("earn_rule.created", () => {
         setLastEventAt(new Date().toISOString());
         api<EarnRule[]>("/api/v1/merchants/me/earn-rules").then((next) => {
@@ -431,6 +441,14 @@ export default function Dashboard() {
     }
   };
 
+  // An agent has been seen if one validated a token this session, or if any past
+  // redemption was attributed to an agent.
+  const agentHasQueried = agentSeen || redemptions.some((r) => Boolean(r.agentId));
+
+  // Show first-run guidance until the merchant reaches the moment that matters:
+  // an actual redemption. Everything before that is setup.
+  const isFirstRun = redemptions.length === 0;
+
   const earnRuleNameById = useMemo(() => {
     const map = new Map<string, string>();
     for (const r of earnRules) map.set(r.id, r.name);
@@ -459,13 +477,27 @@ export default function Dashboard() {
                 setTab(t.key);
                 if (t.key === "status") checkServices();
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+              className={`group relative w-full flex items-center gap-3 px-3 py-2.5 text-sm transition-colors duration-150 ${
                 tab === t.key
-                  ? "bg-brand-500/10 text-brand-400"
-                  : "text-text-secondary hover:text-text-primary hover:bg-surface-2"
+                  ? "text-text-primary"
+                  : "text-text-secondary hover:text-text-primary"
               }`}
             >
-              <span>{t.icon}</span>
+              {/* Active item is marked by an ink rule in the gutter. */}
+              <span
+                aria-hidden
+                className={`absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 bg-brand-500 transition-opacity ${
+                  tab === t.key ? "opacity-100" : "opacity-0"
+                }`}
+              />
+              <span
+                aria-hidden
+                className={`font-mono text-[10px] tracking-[0.12em] ${
+                  tab === t.key ? "text-brand-500" : "text-text-muted"
+                }`}
+              >
+                {t.icon}
+              </span>
               {t.label}
             </button>
           ))}
@@ -484,7 +516,7 @@ export default function Dashboard() {
         <header className="sticky top-0 z-10 glass border-b border-border px-8 py-4 flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold">
-              {TAB_DEFS.find((t) => t.key === tab)?.icon} {TAB_DEFS.find((t) => t.key === tab)?.label}
+              {TAB_DEFS.find((t) => t.key === tab)?.label}
             </h2>
             <p className="text-xs text-text-muted">Sandbox environment · Live via SSE</p>
           </div>
@@ -498,13 +530,28 @@ export default function Dashboard() {
 
         <div className="p-8">
           {tab === "overview" && (
-            <OverviewTab
-              stats={stats}
-              recentTokens={tokens.slice(0, 5)}
-              recentRedemptions={redemptions.slice(0, 5)}
-              earnRuleNameById={earnRuleNameById}
-              flashTokenId={flashTokenId}
-            />
+            isFirstRun ? (
+              /* A new merchant gets the path to their first redemption, not empty tables. */
+              <FirstRun
+                facts={{
+                  hasEarnRule: earnRules.length > 0,
+                  hasToken: tokens.length > 0,
+                  hasAgentConnected: agentHasQueried,
+                  hasRedemption: redemptions.length > 0,
+                }}
+                merchantName={merchant?.name}
+                onGoToRules={() => setTab("rules")}
+                onGoToDemo={() => setTab("demo")}
+              />
+            ) : (
+              <OverviewTab
+                stats={stats}
+                recentTokens={tokens.slice(0, 5)}
+                recentRedemptions={redemptions.slice(0, 5)}
+                earnRuleNameById={earnRuleNameById}
+                flashTokenId={flashTokenId}
+              />
+            )
           )}
           {tab === "tokens" && (
             <TokensTab tokens={tokens} earnRuleNameById={earnRuleNameById} flashTokenId={flashTokenId} />
@@ -581,12 +628,14 @@ function ConnectionPill({ state, lastEventAt }: { state: ConnectionState; lastEv
 /* ---- Stat Card ---- */
 function StatCard({ label, value, icon }: { label: string; value: string | number; icon: string }) {
   return (
-    <div className="glass rounded-xl p-5 hover:border-border-hover transition-colors">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-2xl">{icon}</span>
-      </div>
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="text-xs text-text-muted mt-1">{label}</p>
+    <div className="glass p-5 transition-colors hover:border-border-hover">
+      {/* Folio numeral in the gutter, then the figure at scale. Ledger figures are
+          tabular so columns align down the page. */}
+      <span className="folio">{icon}</span>
+      <p className="tabular mt-3 text-3xl leading-none text-text-primary" style={{ fontFamily: "var(--font-display), Georgia, serif" }}>
+        {value}
+      </p>
+      <p className="mt-2 text-xs text-text-muted">{label}</p>
     </div>
   );
 }
@@ -608,10 +657,10 @@ function OverviewTab({
   return (
     <div className="space-y-8 stagger-children">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon="🎫" label="Tokens Issued" value={stats.tokensIssued} />
-        <StatCard icon="✅" label="Active Tokens" value={stats.activeTokens} />
-        <StatCard icon="💰" label="Redemptions" value={stats.redemptions} />
-        <StatCard icon="💵" label="Total Value" value={`$${stats.totalValue}`} />
+        <StatCard icon="01" label="Tokens Issued" value={stats.tokensIssued} />
+        <StatCard icon="02" label="Active Tokens" value={stats.activeTokens} />
+        <StatCard icon="03" label="Redemptions" value={stats.redemptions} />
+        <StatCard icon="04" label="Total Value" value={`$${stats.totalValue}`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -632,7 +681,7 @@ function OverviewTab({
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold">${t.denomination}</p>
-                  <StatusBadge status={t.status} />
+                  <StatusBadge status={t.status} justChanged={flashTokenId === t.id} />
                 </div>
               </div>
             ))}
@@ -661,7 +710,7 @@ function OverviewTab({
 
       <div className="glass rounded-xl p-6 glow">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-brand-500/20 flex items-center justify-center text-2xl shrink-0">🤖</div>
+          <div className="folio shrink-0 pt-1">TQI</div>
           <div>
             <h3 className="font-semibold text-lg">MCP Agent Integration Active</h3>
             <p className="text-sm text-text-secondary mt-1">
@@ -724,7 +773,7 @@ function TokensTab({
                 <td className="p-4 text-text-secondary font-mono text-xs">{t.customerId.slice(0, 12)}…</td>
                 <td className="p-4">{earnRuleNameById.get(t.earnRuleId) || t.earnRuleId.slice(0, 8)}</td>
                 <td className="p-4 text-right font-semibold">${t.denomination}</td>
-                <td className="p-4"><StatusBadge status={t.status} /></td>
+                <td className="p-4"><StatusBadge status={t.status} justChanged={flashTokenId === t.id} /></td>
                 <td className="p-4 text-text-muted text-xs">{new Date(t.expiryAt).toLocaleDateString()}</td>
               </tr>
             ))}
@@ -779,7 +828,7 @@ function EarnRulesTab({ rules, onCreated }: { rules: EarnRule[]; onCreated: () =
             </div>
             <div className="flex items-center gap-3">
               {r.agentPresentableFlag && (
-                <span className="text-xs bg-brand-500/10 text-brand-400 px-2.5 py-1 rounded-full">🤖 Agent Visible</span>
+                <span className="rounded-[2px] border border-brand-500/50 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-brand-600">Agent visible</span>
               )}
               <StatusBadge status={r.isActive ? "ACTIVE" : "INACTIVE"} />
             </div>
@@ -1402,15 +1451,46 @@ function StatusTab({
 }
 
 /* ---- Shared components ---- */
-function StatusBadge({ status }: { status: string }) {
-  const colors: Record<string, string> = {
-    ACTIVE: "bg-success/10 text-success",
-    REDEEMED: "bg-brand-500/10 text-brand-400",
-    EXPIRED: "bg-error/10 text-error",
-    REJECTED: "bg-error/10 text-error",
-    INACTIVE: "bg-surface-3 text-text-muted",
+function StatusBadge({ status, justChanged = false }: { status: string; justChanged?: boolean }) {
+  // A redeemed token is stamped, the way a paid invoice is stamped. Every other
+  // state is quiet type — the stamp has to mean something, so only one state gets it.
+  if (status === "REDEEMED") {
+    return (
+      <span
+        className={`inline-block px-1.5 py-0.5 text-[10px] font-medium ${justChanged ? "stamp" : ""}`}
+        style={
+          justChanged
+            ? undefined
+            : {
+                color: "var(--color-brand-500)",
+                border: "2px solid currentColor",
+                borderRadius: 2,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                transform: "rotate(-6deg)",
+                opacity: 0.92,
+                fontFamily: "var(--font-mono-ui), monospace",
+              }
+        }
+      >
+        Redeemed
+      </span>
+    );
+  }
+
+  const styles: Record<string, string> = {
+    ACTIVE: "border-success/40 text-success",
+    EXPIRED: "border-border text-text-muted",
+    REJECTED: "border-error/40 text-error",
+    INACTIVE: "border-border text-text-muted",
   };
-  return <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${colors[status] || colors.INACTIVE}`}>{status}</span>;
+  return (
+    <span
+      className={`inline-block rounded-[2px] border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.12em] ${styles[status] || styles.INACTIVE}`}
+    >
+      {status}
+    </span>
+  );
 }
 
 function StatusDot({ status }: { status?: string }) {

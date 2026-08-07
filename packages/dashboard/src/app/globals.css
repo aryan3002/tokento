@@ -1,42 +1,66 @@
 @import "tailwindcss";
 
+/* ============================================================
+   Tokento — "The Ledger"
+   ============================================================
+   The merchant dashboard is a printed ledger book: uncoated paper,
+   warm ink, and a single terracotta stamp that marks value changing
+   hands. This is the same palette as the marketing site, so the
+   product and the story look like one company.
+
+   Previously this file was the generic AI-SaaS stack — Inter, an
+   indigo gradient, glassmorphism and a glow — every one of which the
+   brand brief forbids by name.
+
+   The markup uses semantic tokens (surface-N, text-*, brand-*), so
+   remapping the values below rethemes the whole dashboard at once.
+   ============================================================ */
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-serif: var(--font-display);
+  --font-mono: var(--font-mono-ui);
 
-  /* Tokento brand palette */
-  --color-brand-50: #eef2ff;
-  --color-brand-100: #e0e7ff;
-  --color-brand-200: #c7d2fe;
-  --color-brand-300: #a5b4fc;
-  --color-brand-400: #818cf8;
-  --color-brand-500: #6366f1;
-  --color-brand-600: #4f46e5;
-  --color-brand-700: #4338ca;
+  /* The stamp. One saturated colour in the entire product. */
+  --color-brand-50: #f7ece9;
+  --color-brand-100: #efd8d2;
+  --color-brand-200: #e0b3a9;
+  --color-brand-300: #d08d80;
+  --color-brand-400: #c46e5e;
+  --color-brand-500: #b85042;
+  --color-brand-600: #a8453a;
+  --color-brand-700: #8d382f;
 
-  --color-surface-0: #09090b;
-  --color-surface-1: #0f0f14;
-  --color-surface-2: #16161d;
-  --color-surface-3: #1e1e28;
-  --color-surface-4: #26263a;
+  /* Paper. surface-0 is the page; higher numbers sit closer to the reader. */
+  --color-surface-0: #f5f1e8;
+  --color-surface-1: #faf7f0;
+  --color-surface-2: #efe9dc;
+  --color-surface-3: #e8e1d3;
+  --color-surface-4: #ded5c4;
 
-  --color-border: #2a2a3a;
-  --color-border-hover: #3a3a52;
+  --color-border: #d6cfbf;
+  --color-border-hover: #c2b8a3;
 
-  --color-text-primary: #f4f4f5;
-  --color-text-secondary: #a1a1aa;
-  --color-text-muted: #71717a;
+  --color-text-primary: #0f0f0e;
+  --color-text-secondary: #3a3a36;
+  --color-text-muted: #6b6759;
 
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
+  /* Muted to sit inside a paper palette rather than shout over it. */
+  --color-success: #4f6f52;
+  --color-warning: #a8762c;
+  --color-error: #b85042;
 }
 
 :root {
-  --background: #09090b;
-  --foreground: #f4f4f5;
+  --background: #f5f1e8;
+  --foreground: #0f0f0e;
+
+  /* Paper grain. A faint two-tone noise so large fields are never dead flat. */
+  --grain:
+    radial-gradient(circle at 15% 20%, rgba(15, 15, 14, 0.014) 0 1px, transparent 1px),
+    radial-gradient(circle at 68% 74%, rgba(15, 15, 14, 0.011) 0 1px, transparent 1px);
 }
 
 * {
@@ -44,83 +68,164 @@
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
+  background-image: var(--grain);
+  background-size: 180px 180px, 240px 240px;
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "kern" 1, "liga" 1;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Scrollbar styling */
+/* Ledger figures must align in vertical columns. */
+.tabular,
+table td,
+table th {
+  font-variant-numeric: tabular-nums;
+}
+
+h1, h2, h3, .display {
+  font-family: var(--font-display), Georgia, serif;
+  letter-spacing: -0.015em;
+}
+
+/* Scrollbar — a thin ink rule, not a floating pill. */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2a2a3a;
-  border-radius: 3px;
+  background: #cfc6b2;
+  border: 2px solid var(--background);
+  border-radius: 0;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a52;
+  background: #b3a88f;
 }
 
-/* Glassmorphism utility */
+/* ------------------------------------------------------------
+   Paper card. Replaces the old .glass (backdrop blur + white
+   transparency). Depth comes from a printed edge, not from blur.
+   ------------------------------------------------------------ */
 .glass {
-  background: rgba(15, 15, 20, 0.7);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--color-surface-1, #faf7f0);
+  border: 1px solid var(--color-border, #d6cfbf);
+  border-radius: 2px;
+  box-shadow:
+    0 1px 0 rgba(15, 15, 14, 0.04),
+    0 1px 2px rgba(15, 15, 14, 0.03);
 }
 
-/* Glow effect */
+/* Replaces the indigo .glow. A printed page does not glow; it sits. */
 .glow {
-  box-shadow: 0 0 40px -10px rgba(99, 102, 241, 0.3);
+  box-shadow:
+    0 1px 0 rgba(15, 15, 14, 0.05),
+    0 8px 24px -16px rgba(15, 15, 14, 0.22);
 }
 
-/* Gradient text */
+/* Replaces the purple .gradient-text. Emphasis is ink, not a gradient. */
 .gradient-text {
-  background: linear-gradient(135deg, #a5b4fc, #818cf8, #6366f1);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--color-text-primary, #0f0f0e);
+  font-family: var(--font-display), Georgia, serif;
+  font-style: italic;
 }
 
-/* Stat card shimmer */
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+/* ------------------------------------------------------------
+   Hand-set details
+   ------------------------------------------------------------ */
+
+/* Section label: mono, letterspaced, sitting in the gutter like a folio. */
+.folio {
+  font-family: var(--font-mono-ui), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #6b6759);
 }
 
-.skeleton {
-  background: linear-gradient(90deg, #1e1e28 25%, #26263a 50%, #1e1e28 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: 6px;
+/* An imperfect rule, drawn rather than ruled. */
+.ink-rule {
+  height: 1px;
+  border: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #cfc6b2 4%,
+    #b9ae96 22%,
+    #cfc6b2 48%,
+    #b9ae96 71%,
+    #cfc6b2 94%,
+    transparent 100%
+  );
 }
 
-/* Pulse dot */
+/* Link underline that writes itself on hover. */
+.ink-link {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0% 1px;
+  transition: background-size 200ms ease-out;
+  text-decoration: none;
+}
+.ink-link:hover {
+  background-size: 100% 1px;
+}
+
+/* ------------------------------------------------------------
+   THE STAMP — a token being redeemed gets stamped, like a receipt.
+   This is the one moment of real motion in the product, and the
+   same gesture the marketing site uses.
+   ------------------------------------------------------------ */
+@keyframes stamp-down {
+  0%   { opacity: 0; transform: scale(2.6) rotate(-14deg); filter: blur(2px); }
+  55%  { opacity: 1; transform: scale(0.94) rotate(-6deg); filter: blur(0); }
+  70%  { transform: scale(1.04) rotate(-6deg); }
+  100% { opacity: 1; transform: scale(1) rotate(-6deg); }
+}
+.stamp {
+  animation: stamp-down 420ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  color: var(--color-brand-500, #b85042);
+  border: 2px solid currentColor;
+  border-radius: 2px;
+  font-family: var(--font-mono-ui), monospace;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  /* Ink never prints perfectly evenly. */
+  opacity: 0.92;
+}
+
+/* A row that just changed state gets a brief wash of stamp colour. */
+@keyframes ink-wash {
+  0%   { background-color: rgba(184, 80, 66, 0.16); }
+  100% { background-color: transparent; }
+}
+.ink-wash {
+  animation: ink-wash 1.6s ease-out both;
+}
+
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  50% { opacity: 0.35; }
 }
 .pulse-dot {
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
-/* Slide-in animation */
 @keyframes slide-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 .animate-slide-up {
-  animation: slide-up 0.4s ease-out forwards;
+  animation: slide-up 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 
-/* Stagger children */
 .stagger-children > * {
   opacity: 0;
-  animation: slide-up 0.4s ease-out forwards;
+  animation: slide-up 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
 }
 .stagger-children > *:nth-child(1) { animation-delay: 0ms; }
 .stagger-children > *:nth-child(2) { animation-delay: 60ms; }
@@ -128,3 +233,34 @@ body {
 .stagger-children > *:nth-child(4) { animation-delay: 180ms; }
 .stagger-children > *:nth-child(5) { animation-delay: 240ms; }
 .stagger-children > *:nth-child(6) { animation-delay: 300ms; }
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #e8e1d3 25%, #f2ede2 50%, #e8e1d3 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 2px;
+}
+
+/* The ink line that draws itself under the active tab. */
+@keyframes draw-rule {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.draw-rule {
+  transform-origin: left center;
+  animation: draw-rule 260ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
