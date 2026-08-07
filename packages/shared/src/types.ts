@@ -228,12 +228,27 @@ export interface RedeemTokenRequest {
   idempotencyKey: string;
 }
 
+/**
+ * Settlement state for a redemption.
+ *
+ * `not_implemented` is the only value the platform currently returns: there is no
+ * ledger, no double-entry journal and no payout pipeline, so no funds move. The
+ * field exists so an integrator cannot mistake a recorded redemption for a
+ * completed settlement.
+ */
+export type SettlementStatus = 'not_implemented' | 'pending' | 'settled';
+
 export interface RedeemTokenResponse {
   redemptionId: string;
   tokenId: string;
   netTransactionValue: number;
   tokenDenomination: number;
+  /**
+   * Opaque correlation id. NOT a payment reference — settlement is not
+   * implemented and no funds move. See settlementStatus.
+   */
   settlementReference: string;
+  settlementStatus: SettlementStatus;
   alreadyRedeemed: boolean;       // True if idempotent duplicate
 }
 

@@ -10,6 +10,17 @@ import { validationService } from './validation.service';
 import { EventType, TokenStatus, RedeemTokenRequest, RedeemTokenResponse } from '@tokento/shared';
 import { AppError } from '../middleware/error.middleware';
 import { subtractMoneyFloorZero, toMoneyNumber } from '../utils/money';
+import { SettlementStatus } from '@tokento/shared';
+
+/**
+ * Settlement is a stub. There is no ledger, no journal and no payout pipeline —
+ * a redemption records that value was applied at checkout, nothing more. This is
+ * surfaced in the API response rather than left implicit so the stub cannot leak
+ * into an integrator's business logic as if funds had moved.
+ */
+function settlementStatus(): SettlementStatus {
+  return process.env.SETTLEMENT_ENABLED === 'true' ? 'pending' : 'not_implemented';
+}
 
 export interface RedeemOptions {
   isSandbox: boolean;
@@ -40,6 +51,7 @@ export class RedemptionService {
         netTransactionValue: toMoneyNumber(existing.netValue),
         tokenDenomination: toMoneyNumber(existing.tokenDenomination),
         settlementReference: existing.settlementRef,
+        settlementStatus: settlementStatus(),
         alreadyRedeemed: true,
       };
     }
@@ -98,6 +110,7 @@ export class RedemptionService {
       netTransactionValue: toMoneyNumber(redemption.netValue),
       tokenDenomination: toMoneyNumber(token.denomination),
       settlementReference: settlementRef,
+      settlementStatus: settlementStatus(),
       alreadyRedeemed: false,
     };
   }

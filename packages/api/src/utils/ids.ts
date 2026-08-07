@@ -41,6 +41,10 @@ export function hashApiKey(rawKey: string): string {
 /**
  * Generate a settlement reference.
  */
+/**
+ * Correlation id for a redemption. NOT a payment reference: settlement is not
+ * implemented, nothing consumes this value, and no funds move.
+ */
 export function generateSettlementRef(): string {
   return `stl_${crypto.randomBytes(16).toString('hex')}`;
 }

@@ -25,6 +25,9 @@ model Merchant {
   name             String
   email            String           @unique
   agentOptIn       Boolean          @default(true)
+  // DECLARATIVE ONLY — no code branches on either field yet. Settlement is not
+  // implemented (no ledger, no payout pipeline), so these record intent for a
+  // future settlement engine and change nothing about current behaviour.
   settlementType   String           @default("discount")   // discount | cashback | credit
   settlementTiming String           @default("real_time")   // real_time | daily_batch
   webhookUrl       String?
