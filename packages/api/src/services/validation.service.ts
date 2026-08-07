@@ -141,6 +141,8 @@ export class ValidationService {
         denomination: token.denomination,
         expiryAt: token.expiryAt.toISOString(),
         isSandbox: token.isSandbox,
+        minimumTransactionFloor: token.minimumTransactionFloor,
+        agentPresentableFlag: token.agentPresentableFlag,
         signature: token.signature,
       });
 

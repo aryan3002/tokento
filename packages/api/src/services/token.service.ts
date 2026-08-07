@@ -97,6 +97,8 @@ export class TokenService {
       denomination: earnRule.tokenDenomination,
       expiryAt: expiryAt.toISOString(),
       isSandbox,
+      minimumTransactionFloor: earnRule.minimumTransactionFloor,
+      agentPresentableFlag: earnRule.agentPresentableFlag,
     });
 
     // Create the token

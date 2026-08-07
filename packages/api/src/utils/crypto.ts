@@ -6,7 +6,16 @@
 
 import crypto from 'crypto';
 
-const MASTER_KEY = process.env.HMAC_MASTER_KEY || 'dev-hmac-master-key-change-me';
+// A missing key in production would silently fall back to a publicly-known literal,
+// making every token signature forgeable. Fail loudly at load instead.
+const MASTER_KEY = ((): string => {
+  const key = process.env.HMAC_MASTER_KEY;
+  if (key) return key;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('HMAC_MASTER_KEY is required in production.');
+  }
+  return 'dev-hmac-master-key-change-me';
+})();
 
 export interface TokenSignatureParams {
   tokenId: string;
@@ -15,6 +24,8 @@ export interface TokenSignatureParams {
   denomination: number;
   expiryAt: string;
   isSandbox: boolean;
+  minimumTransactionFloor: number;
+  agentPresentableFlag: boolean;
 }
 
 /**
@@ -39,6 +50,10 @@ export function buildTokenSignaturePayload(params: TokenSignatureParams): string
     params.denomination.toString(),
     params.expiryAt,
     params.isSandbox ? 'sandbox' : 'production',
+    // Immutable per-token constraints. Unsigned, a DB-write attacker could lower the
+    // spend floor or flip presentability without invalidating the MAC.
+    params.minimumTransactionFloor.toString(),
+    params.agentPresentableFlag ? 'agent' : 'no-agent',
   ].join(':');
 }
 
@@ -67,6 +82,8 @@ export function verifyTokenSignature(params: TokenSignatureParams & {
     denomination: params.denomination,
     expiryAt: params.expiryAt,
     isSandbox: params.isSandbox,
+    minimumTransactionFloor: params.minimumTransactionFloor,
+    agentPresentableFlag: params.agentPresentableFlag,
   });
 
   // Constant-time comparison to prevent timing attacks

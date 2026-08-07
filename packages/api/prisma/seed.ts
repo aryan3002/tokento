@@ -1,10 +1,12 @@
 // ============================================================
 // Tokento — Database Seed Script
 // ============================================================
-import dotenv from 'dotenv';
-import path from 'path';
-// Load .env from the monorepo root (Token/.env), not packages/api/.env
-dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+// This import MUST come first. crypto.ts captures HMAC_MASTER_KEY at module load,
+// and ES imports are hoisted above statements — so calling dotenv.config() in this
+// file's body ran too late and the signer silently fell back to the development key,
+// producing tokens whose signatures the API rejected.
+import '../src/config/env';
+import { signToken } from '../src/utils/crypto';
 
 import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
@@ -96,16 +98,26 @@ async function main() {
   });
   console.log(`✅ Wallet: ${customerId}`);
 
-  // Mint test tokens
-  const hmacKey = crypto.createHmac('sha256', process.env.HMAC_MASTER_KEY || 'dev-hmac-master-key-change-me').update(`merchant:${merchant.id}`).digest();
+  // Mint test tokens.
+  // Signing goes through the canonical helper — this file previously rebuilt the
+  // payload inline, which silently drifted from the real one and produced tokens
+  // that failed signature verification.
 
   for (let i = 0; i < 3; i++) {
     const tokenId = crypto.randomUUID();
     const expiryAt = new Date();
     expiryAt.setDate(expiryAt.getDate() + 90);
 
-    const payload = [tokenId, merchant.id, customerId, '5', expiryAt.toISOString(), 'sandbox'].join(':');
-    const signature = crypto.createHmac('sha256', hmacKey).update(payload).digest('hex');
+    const signature = signToken({
+      tokenId,
+      merchantId: merchant.id,
+      customerId,
+      denomination: 5,
+      expiryAt: expiryAt.toISOString(),
+      isSandbox: true,
+      minimumTransactionFloor: 10,
+      agentPresentableFlag: true,
+    });
 
     const token = await prisma.token.create({
       data: {
